@@ -1,9 +1,18 @@
-from lark import Lark, Token, Tree, Visitor
+from lark import Lark, Token, Transformer, Tree, Visitor
 from pathlib import Path
+from typing import Literal, NamedTuple
 import sys
+import z3
 
 
-# WIP: Covergroup with simple bins
+############################################################
+##                        GRAMMAR                         ##
+############################################################
+# TODO: add support for subranges from variables, not just whole register.
+#       (e.g., in coverpoint definition)
+# TODO: add full support for expressions
+#       https://www.thevtool.com/operator-precedence-and-potential-problems/
+
 GRAMMAR = """
     ?start: covergroup
 
@@ -15,29 +24,48 @@ GRAMMAR = """
 
     coverpoint: [IDENT ":"] "coverpoint" IDENT (bins | ";")
     bins: "{" bin+ "}"
-    bin: bin_type IDENT [ bin_array ] "=" bin_content ";"
-    ?bin_type: "bins" | "illegal_bins" | "ignore_bins"
-    bin_array: "[" [ expr ] "]"
-    bin_content: range
-               | "{" range [", " range]* "}"
+    bin: BIN_TYPE IDENT [ bin_array ] "=" bin_content ";"   -> bin
+    BIN_TYPE: "bins" | "illegal_bins" | "ignore_bins"
+    bin_array: "[" [ expr ] "]"                             -> bin_index
+    bin_content: DEFAULT                                    -> bin_default
+               | "{" range [", " range]* "}"                -> bin_array
+               | range                                      -> bin_range
+    DEFAULT.2: "default"
 
-    range: expr
-         | "[" expr ":" expr "]"
-         | "[" "$"  ":" expr "]"
-         | "[" expr ":" "$"  "]"
+    range: expr                     -> range_e
+         | "[" expr ":" expr "]"    -> range_e_e
+         | "[" END  ":" expr "]"    -> range_t_e
+         | "[" expr ":" END  "]"    -> range_e_t
+    END.2: "$"
 
-    ?expr: term
-         | expr "+" term
-         | expr "-" term
+    ?expr: logic
+    ?logic: comp
+          | logic "&&" comp     -> e_and
+          | logic "||" comp     -> e_or
+    ?comp: shifts
+         | comp "==" shifts     -> e_eq
+         | comp "!=" shifts     -> e_neq
+         | comp "<=" shifts     -> e_leq
+         | comp ">=" shifts     -> e_geq
+         | comp "<" shifts      -> e_le
+         | comp ">" shifts      -> e_ge
+    ?shifts: add_sub
+           | shifts ">>" add_sub    -> e_rshift
+           | shifts "<<" add_sub    -> e_lshift
+    ?add_sub: term
+            | add_sub "+" term  -> e_add
+            | add_sub "-" term  -> e_sub
     ?term: factor
-         | term "*" factor
-         | term "/" factor
-         | term "%" factor
+         | term "*" factor  -> e_mul
+         | term "/" factor  -> e_div
+         | term "%" factor  -> e_mod
     ?factor: atom
-           | "!" factor
-           | "-" factor
-           | "(" expr ")"
-    ?atom: NUMBER | IDENT
+           | "!" factor     -> e_log_neg
+           | "~" factor     -> e_bit_neg
+           | "-" factor     -> e_num_neg
+           | "(" expr ")"   -> e_paranthisis
+    ?atom: NUMBER           -> e_num
+         | IDENT            -> e_var
 
     %import common.CNAME -> IDENT
     %import common.NEWLINE
@@ -48,12 +76,58 @@ GRAMMAR = """
     %ignore NEWLINE
 """
 
+############################################################
+##                     PARSED TYPES                      ##
+############################################################
+
+class Interval(NamedTuple):
+    start: z3.ExprRef | Literal['$']
+    end: z3.ExprRef | Literal['$']
+
+    def __str__(self) -> str:
+        return f'[{self.start}:{self.end}]'
+
+
+class Bins(NamedTuple):
+    category: Literal['normal', 'ignore', 'illegal']
+    name: str
+    indices: list[z3.ExprRef] | None
+    bins: list[Interval | z3.ExprRef] | Literal['default']
+
+    def __str__(self) -> str:
+        return (f'Bin({self.category}, {self.name}{self.indices or ""},'
+                f'{self.bins})')
+
+
+class Coverpoint(NamedTuple):
+    name: str | None
+    target: str
+    bins: list[Bins]
+
+    def __str__(self) -> str:
+        return ((f'{self.name}: ' if self.name else '')
+                + f'coverpoint {self.target}'
+                + ('\n\t\t' if len(self.bins) > 0 else '')
+                + '\n\t\t'.join(map(str, self.bins)))
+
+
+class Covergroup(NamedTuple):
+    name: str
+    coverpoints: list[Coverpoint]
+
+    def __str__(self) -> str:
+        return (f'covergroup {self.name}\n\t'
+                + '\n\t'.join(map(str, self.coverpoints)))
+
+
+############################################################
+##                      VALIDATORS                        ##
+############################################################
 
 class CheckIdentifiers(Visitor):
     def covergroup(self, tree: Tree) -> None:
         names = [x.value for x in tree.children
                  if isinstance(x, Token) and x.type == 'IDENT']
-
         match len(names):
             case 1:
                 pass
@@ -62,6 +136,180 @@ class CheckIdentifiers(Visitor):
             case _:
                 assert False, 'Uh oh, something is wrong.'
 
+
+############################################################
+##                     TRANSFORMERS                       ##
+############################################################
+
+class Optimus(Transformer):
+    ########################################################
+    ##              EVALUATE COVERGROUPS                  ##
+    ########################################################
+    def covergroup(self, tree: Tree) -> Covergroup:
+        assert isinstance(tree, list) and len(tree) == 3
+        return Covergroup(name=tree[0].value,
+                          coverpoints=tree[1].children)
+
+    ########################################################
+    ##              EVALUATE COVERPOINTS                  ##
+    ########################################################
+    def coverpoint(self, tree: Tree) -> Coverpoint:
+        assert isinstance(tree, list) and len(tree) in (2, 3)
+        name = None if tree[0] is None else tree[0].value
+        target = tree[1].value
+        bins = tree[2].children if len(tree) == 3 else []
+        return Coverpoint(name=name,
+                          target=target,
+                          bins=bins)
+
+    ########################################################
+    ##                  EVALUATE BINS                     ##
+    ########################################################
+    def bin(self, tree: Tree) -> Bins:
+        assert isinstance(tree, list) and len(tree) == 4
+        category = {
+            'bins': 'normal',
+            'ignore_bins': 'illegal',
+            'illegal_bins': 'ignore'}.get(tree[0].value, None)
+        assert category is not None, 'Missing bin type'
+        assert category in ('normal', 'illegal', 'ignore'), 'Wrong bin type.'
+        return Bins(category=category,
+                    name=tree[1].value,
+                    indices=tree[2],
+                    bins=tree[3])
+
+    def bin_index(self, tree: Tree) -> list[z3.ExprRef]:
+        if tree == [None]:
+            return []
+        if isinstance(tree, list):
+            return tree
+        assert False
+
+    def bin_range(self, tree: Tree) -> list[Interval | z3.ExprRef]:
+        assert isinstance(tree, list) and len(tree) == 1
+        return [tree[0]]
+
+    def bin_array(self, tree: Tree) -> list[Interval | z3.ExprRef]:
+        assert isinstance(tree, list) and len(tree) >= 1
+        return list(filter(lambda x: x is not None, tree))
+
+    def bin_default(self, tree: Tree) -> Literal['default']:
+        assert isinstance(tree, list) and len(tree) == 1
+        return 'default'
+
+    ########################################################
+    ##                 EVALUATE RANGES                    ##
+    ########################################################
+    def range_e(self, tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 1
+        return tree[0]
+
+    def range_e_e(self, tree) -> Interval:
+        assert isinstance(tree, list) and len(tree) == 2
+        return Interval(start=tree[0],
+                        end=tree[1])
+
+    def range_t_e(self, tree) -> Interval:
+        assert isinstance(tree, list) and len(tree) == 2
+        return Interval(start='$',
+                        end=tree[1])
+
+    def range_e_t(self, tree) -> Interval:
+        assert isinstance(tree, list) and len(tree) == 2
+        return Interval(start='$',
+                        end='$')
+
+    ########################################################
+    ##               EVALUATE EXPRESSIONS                 ##
+    ########################################################
+    def e_and(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] and tree[1]
+
+    def e_or(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] or tree[1]
+
+    def e_eq(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] == tree[1]
+
+    def e_neq(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] != tree[1]
+
+    def e_leq(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] <= tree[1]
+
+    def e_geq(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] >= tree[1]
+
+    def e_le(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] < tree[1]
+
+    def e_ge(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] > tree[1]
+
+    def e_rshift(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] >> tree[1]
+
+    def e_lshift(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] << tree[1]
+
+    def e_add(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] + tree[1]
+
+    def e_sub(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] - tree[1]
+
+    def e_mul(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] * tree[1]
+
+    def e_div(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] / tree[1]
+
+    def e_mod(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 2
+        return tree[0] % tree[1]
+
+    def e_log_neg(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 1
+        return tree[0] == 0
+
+    def e_bit_neg(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 1
+        return ~tree[0]
+
+    def e_num_neg(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 1
+        return -tree[0]
+
+    def e_paranthisis(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 1
+        return tree[0]
+
+    def e_num(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 1
+        return z3.IntVal(int(tree[0].value))
+
+    def e_var(self, tree: Tree) -> z3.ExprRef:
+        assert isinstance(tree, list) and len(tree) == 1
+        return z3.Int(tree[0].value)
+
+
+############################################################
+##                       PLAYGROUND                       ##
+############################################################
 
 def main():
     parser = Lark(GRAMMAR)
@@ -73,9 +321,11 @@ def main():
             print(f'{i+1:-4} | {line}')
         print('--------------------------------------------------')
 
-        result = parser.parse(code)
-        CheckIdentifiers().visit(result)
-        print(result.pretty())
+        tree = parser.parse(code)
+        CheckIdentifiers().visit(tree)
+        tree = Optimus().transform(tree)
+
+        print(tree)
     except Exception as e:
         print('Error:', e)
 

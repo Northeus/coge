@@ -1,4 +1,6 @@
 covergroup foo;
+    coverpoint foo;
+
     coverpoint x
     {
         bins a = 0;
@@ -9,7 +11,7 @@ covergroup foo;
 
     some_arrays: coverpoint y
     {
-        bins a[3] = {0, 1, 2};
+        bins a[3] = {0 + 2, 1, 2};
         bins b[5] = {1, 2, 3};
         bins c[]  = {[4:6]};
         bins d[]  = {[4:$], 7};
@@ -22,4 +24,4 @@ covergroup foo;
         illegal_bins c = {2};
         bins         d = default;
     }
-endgroup
+endgroup : foo
