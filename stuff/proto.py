@@ -79,6 +79,13 @@ GRAMMAR = """
 ############################################################
 ##                     PARSED TYPES                      ##
 ############################################################
+# TODO: Equality should be completly reworked, it is not correct
+
+def is_eq(expr1: z3.ExprRef, expr2: z3.ExprRef) -> bool:
+    solver = z3.Solver()
+    solver.add(expr1 != expr2)
+    return solver.check() == z3.unsat
+
 
 class Interval(NamedTuple):
     start: z3.ExprRef | Literal['$']
@@ -86,6 +93,24 @@ class Interval(NamedTuple):
 
     def __str__(self) -> str:
         return f'[{self.start}:{self.end}]'
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Interval):
+            return False
+
+        if isinstance(self.start, str) != isinstance(other.start, str):
+            return False
+
+        if isinstance(self.end, str) != isinstance(other.end, str):
+            return False
+
+        for x, y in zip((self.start, self.end), (other.start, other.end)):
+            if (isinstance(x, z3.ExprRef)
+                and isinstance(y, z3.ExprRef)
+                and not is_eq(x, y)):
+                return False
+
+        return True
 
 
 class Bins(NamedTuple):
@@ -97,6 +122,104 @@ class Bins(NamedTuple):
     def __str__(self) -> str:
         return (f'Bin({self.category}, {self.name}{self.indices or ""},'
                 f'{self.bins})')
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Bins):
+            return False
+
+        if self.category != other.category:
+            return False
+
+        if (self.indices is None) != (other.indices is None):
+            return False
+
+        foo = lambda x: len(x) if isinstance(x, list) else -1
+        if foo(self.indices) != foo(other.indices):
+            return False
+
+        if (foo(self.indices) == 1) and (foo(other.indices) == 1):
+            assert isinstance(self.indices, list)
+            assert isinstance(other.indices, list)
+            if not is_eq(self.indices[0], other.indices[0]):
+                return False
+
+        if (self.bins == 'default') != (other.bins == 'default'):
+            return False
+
+        if isinstance(self.bins, list) and isinstance(other.bins, list):
+            s_iter = iter(self.bins)
+            o_iter = iter(other.bins)
+            s_curr = next(s_iter, None)
+            o_curr = next(o_iter, None)
+            s_idx = 0
+            o_idx = 0
+
+            while True:
+                if (s_curr is None) != (o_curr is None):
+                    return False
+
+                if (s_curr is None) and (o_curr is None):
+                    break
+
+                if isinstance(s_curr, Interval) and isinstance(o_curr, Interval):
+                    if isinstance(s_curr.start, str) or isinstance(s_curr.end, str):
+                        print('[Error] Unsupported bin comparision ($).')
+                        return False
+
+                    if isinstance(o_curr.start, str) or isinstance(o_curr.end, str):
+                        print('[Error] Unsupported bin comparision ($).')
+                        return False
+
+                    if not is_eq(o_curr.start + z3.IntVal(o_idx),
+                                 s_curr.start + z3.IntVal(s_idx)):
+                        return False
+
+                    s_idx += 1
+                    if is_eq(s_curr.start + z3.IntVal(s_idx), s_curr.end + 1):
+                        s_curr = next(s_iter, None)
+                        s_idx = 0
+
+                    o_idx += 1
+                    if is_eq(o_curr.start + z3.IntVal(o_idx), o_curr.end + 1):
+                        o_curr = next(o_iter, None)
+                        o_idx = 0
+
+                if isinstance(s_curr, Interval) and isinstance(o_curr, z3.ExprRef):
+                    if isinstance(s_curr.start, str) or isinstance(s_curr.end, str):
+                        print('[Error] Unsupported bin comparision ($).')
+                        return False
+
+                    if not is_eq(o_curr, s_curr.start + z3.IntVal(s_idx)):
+                        return False
+
+                    s_idx += 1
+                    if is_eq(s_curr.start + z3.IntVal(s_idx), s_curr.end + 1):
+                        s_curr = next(s_iter, None)
+                        s_idx = 0
+                    o_curr = next(o_iter, None)
+
+                if isinstance(s_curr, z3.ExprRef) and isinstance(o_curr, Interval):
+                    if isinstance(o_curr.start, str) or isinstance(o_curr.end, str):
+                        print('[Error] Unsupported bin comparision ($).')
+                        return False
+
+                    if not is_eq(s_curr, o_curr.start + z3.IntVal(o_idx)):
+                        return False
+
+                    o_idx += 1
+                    if is_eq(o_curr.start + z3.IntVal(o_idx), o_curr.end + 1):
+                        o_curr = next(o_iter, None)
+                        o_idx = 0
+                    s_curr = next(s_iter, None)
+
+                if isinstance(s_curr, z3.ExprRef) and isinstance(o_curr, z3.ExprRef):
+                    if not is_eq(s_curr, o_curr):
+                        return False
+
+                    s_curr = next(s_iter, None)
+                    o_curr = next(o_iter, None)
+
+        return True
 
 
 class Coverpoint(NamedTuple):
@@ -110,6 +233,21 @@ class Coverpoint(NamedTuple):
                 + ('\n\t\t' if len(self.bins) > 0 else '')
                 + '\n\t\t'.join(map(str, self.bins)))
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Coverpoint):
+            return False
+
+        if self.target != other.target:
+            return False
+
+        if len(self.bins) != len(other.bins):
+            return False
+
+        if any(not x == y for x, y in zip(self.bins, other.bins)):
+            return False
+
+        return True
+
 
 class Covergroup(NamedTuple):
     name: str
@@ -118,6 +256,18 @@ class Covergroup(NamedTuple):
     def __str__(self) -> str:
         return (f'covergroup {self.name}\n\t'
                 + '\n\t'.join(map(str, self.coverpoints)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Covergroup):
+            return False
+
+        if len(self.coverpoints) != len(other.coverpoints):
+            return False
+
+        if any(not x == y for x, y in zip(self.coverpoints, other.coverpoints)):
+            return False
+
+        return True
 
 
 ############################################################
@@ -311,21 +461,25 @@ class Optimus(Transformer):
 ##                       PLAYGROUND                       ##
 ############################################################
 
+PARSER = Lark(GRAMMAR)
+
+
+def load(path: Path) -> Covergroup:
+    code = Path(path).read_text()
+    print(f'Code ({path}):')
+    for i, line in enumerate(code.splitlines()):
+        print(f'{i+1:-4} | {line}')
+    print('--------------------------------------------------')
+
+    tree = PARSER.parse(code)
+    CheckIdentifiers().visit(tree)
+    return Optimus().transform(tree)
+
+
 def main():
-    parser = Lark(GRAMMAR)
-
+    path1, path2 = map(Path, sys.argv[1:3])
     try:
-        code = Path(sys.argv[1]).read_text()
-        print('Code:')
-        for i, line in enumerate(code.splitlines()):
-            print(f'{i+1:-4} | {line}')
-        print('--------------------------------------------------')
-
-        tree = parser.parse(code)
-        CheckIdentifiers().visit(tree)
-        tree = Optimus().transform(tree)
-
-        print(tree)
+        print('Are code equals?', ('no', 'yes')[int(load(path1) == load(path2))])
     except Exception as e:
         print('Error:', e)
 
