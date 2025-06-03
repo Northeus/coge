@@ -1,3 +1,5 @@
+# TODO: finish todos
+# TODO: equivalence can be done using sat solver (ranges, comparision, and, ors)
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -45,10 +47,6 @@ class Iterator(NamedTuple, Generic[T]):
     def any(self, fn: Callable[[T], bool]) -> bool:
         return any(map(fn, self.iterable))
 
-    def empty(self) -> bool:
-        sentinel = object()
-        return next(iter(self.iterable), sentinel) == sentinel
-
     # Casters.
     def to_dict(self,
                 fn_key: Callable[[T], U],
@@ -67,21 +65,6 @@ class Iterator(NamedTuple, Generic[T]):
 
 def always_true() -> bool:
     return True
-
-
-####==============================================####
-##                   CoCoTB Utils                   ##
-####==============================================####
-
-def ports(dut: HierarchyObject) -> dict[str, ModifiableObject]:
-    return (
-        Iterator(dir(dut))
-        .filter(lambda x: not x.startswith('_'))
-        .map(lambda x: getattr(dut, x))
-        .filter(lambda x: isinstance(x, ModifiableObject))
-        .to_dict(lambda k: k._name,
-                 lambda v: v)
-    )
 
 
 ####==============================================####
@@ -123,6 +106,7 @@ class Port(NamedTuple):
 class CoverGroup:
     dut: DUT
     cover_points: dict[Port, list[CoverPoint]] = field(default_factory=dict)
+    crosses: list[Cross] = field(default_factory=list)
 
     def add_cover_point(self,
                         port: Port,
@@ -133,12 +117,30 @@ class CoverGroup:
         self.cover_points.setdefault(port, []).append(cover_point)
         return cover_point
 
+    def add_cross(self,
+                  targets: list[CoverPoint | Bin | Sequence],
+                  condition: Callable[[], bool] = always_true
+                  ) -> None:
+        _targets = []
+        for target in targets:
+            assert target.port in self.dut.ports.values()
+            if isinstance(target, CoverPoint):
+                _targets.extend(target.bins)
+                _targets.extend(target.sequences)
+            else:
+                _targets.append(target)
+
+        self.crosses.append(Cross.from_targets(_targets, condition))
+
     def sample(self) -> None:
         values = {port: port.read() for port in self.cover_points}
+        hits = set()
 
         for port, cover_points in self.cover_points.items():
             for cover_point in cover_points:
-                cover_point.sample(values[port])
+                hits |= cover_point.sample(values[port])
+
+        Iterator(self.crosses).for_each(lambda x: x.sample(values, hits))
 
     def report(self) -> str:
         # TODO:
@@ -154,11 +156,9 @@ class IllegalBinException(Exception):
 class CoverPoint:
     port: Port
     condition: Callable[[], bool] = always_true
-
     bins: dict[Bin, int] = field(default_factory=dict)
     ignored_bins: list[Bin] = field(default_factory=list)
     illegal_bins: list[Bin] = field(default_factory=list)
-
     sequences: dict[Sequence, int] = field(default_factory=dict)
     ignored_sequences: list[Sequence] = field(default_factory=list)
     illegal_sequences: list[Sequence] = field(default_factory=list)
@@ -186,26 +186,86 @@ class CoverPoint:
             case 'illegal': self.illegal_sequences.append(_sequence)
         return _sequence
 
-    def sample(self, value: int) -> None:
-        if (Iterator(self.illegal_sequences)
+    def sample(self, value: int) -> set[Bin]:
+        if (Iterator(self.illegal_bins)
+                .concat(Iterator(self.illegal_sequences))
                 .any(lambda x: x.sample(value))):
             raise IllegalBinException()
 
-        # Ensure each state machine is updated
-        if any([x.sample(value) for x in self.ignored_sequences]):
+        if (Iterator(self.ignored_bins)
+                .concat(Iterator(self.ignored_sequences))
+                .any(lambda x: x.sample(value))):
+            return set()
+
+        hits = set()
+        (Iterator(self.bins.keys())
+            .concat(Iterator(self.sequences.keys()))
+            .filter(lambda x: x.sample(value))
+            .for_each(hits.add))
+        for bin in hits:
+            self.bins[bin] += 1
+        return hits
+
+
+@dataclass
+class Cross:
+    @dataclass
+    class Target:
+        requires: tuple[Bin | Sequence]
+        hits: int = 0
+
+    targets: list[Target]
+    condition: Callable[[], bool] = always_true
+    ignored_targets: list[Bin | Sequence] = field(default_factory=list)
+    ignored_values: dict[Port, set[int | range]] = field(default_factory=dict)
+
+    def ignore_bin(self, bin: Bin) -> None:
+        if bin not in self.ignored_targets:
+            self.ignored_targets.append(bin)
+
+    def ignore_sequence(self, sequence: Sequence) -> None:
+        if sequence not in self.ignored_targets:
+            self.ignored_targets.append(sequence)
+
+    def ignore_values(self, port: Port, values: list[int | range]) -> None:
+        self.ignored_values.setdefault(port, set()).union(values)
+
+    def sample(self,
+               values: dict[Port, int],
+               hits: set[Bin | Sequence]
+               ) -> None:
+        if not self.condition():
             return
 
-        if (Iterator(self.illegal_bins)
-                .any(lambda x: x.sample(value))):
-            raise IllegalBinException()
-        if (Iterator(self.ignored_bins)
-                .any(lambda x: x.sample(value))):
-            return None
+        _hits = set()
+        for hit in hits:
+            if hit in self.ignored_targets:
+                continue
 
-        for target in filter(lambda x: x.sample(value), self.bins.keys()):
-            self.bins[target] += 1
-        for target in filter(lambda x: x.sample(value), self.sequences.keys()):
-            self.sequences[target] += 1
+            ignored = self.ignored_values.get(hit.port, set())
+            value = values[hit.port]
+
+            if any((isinstance(ignored, range) and value in ignored)
+                   or (isinstance(ignored, int) and value == ignored)
+                   for ignored in ignored):
+                continue
+            _hits.add(hit)
+
+        for target in self.targets:
+            if all(x in _hits for x in target.requires):
+                target.hits += 1
+
+    @classmethod
+    def from_targets(cls,
+                     targets: list[Bin | Sequence],
+                     condition: Callable[[], bool] = always_true
+                     ) -> Cross:
+        grouped = {}
+        for target in targets:
+            grouped.setdefault(target.port, list()).append(target)
+
+        _targets = [Cross.Target(x) for x in product(*grouped.values())]
+        return Cross(_targets, condition)
 
 
 @dataclass
@@ -262,16 +322,28 @@ class Sequence:
 ##              Coverage Comparision                ##
 ####==============================================####
 
-# TODO: equivalence can be done using sat solver (ranges, comparision, and, ors)
-
 # TODO: Compare coverpoints:
 #  - bins without conditions using range recreation and comparision.
 #  - bins with condition some symbolic execution and range recreation?
 #  - sequence bins using automata?
 
+
 # TODO: some pretty prints
 
 
+####==============================================####
+##                   CoCoTB Utils                   ##
+####==============================================####
+
+def ports(dut: HierarchyObject) -> dict[str, ModifiableObject]:
+    return (
+        Iterator(dir(dut))
+        .filter(lambda x: not x.startswith('_'))
+        .map(lambda x: getattr(dut, x))
+        .filter(lambda x: isinstance(x, ModifiableObject))
+        .to_dict(lambda k: k._name,
+                 lambda v: v)
+    )
 
 # TODO: some pretty prints
 
