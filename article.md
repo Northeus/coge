@@ -60,7 +60,8 @@ Mostly verification engineers with interest in research.
 ---
 
 # Meeting.
- - [ ] Some statistics for number of requirements, so I can say it is lot of them.
+ - [ ] Some sources for statistics for number of requirements, so I can say it is lot of them.
+ - [ ] Check if the "storytelling" of the article is well layouted.
 
 ---
 
@@ -106,34 +107,110 @@ As can be seen in this evaluation, LLMs have still some problems with HDL (VHDL 
 There are emerging models to generate RTL (LLM for RTL).
 There is also an ongoing research on TB generation, but it misses coverage (LLM for naive TB).
 
-**EXPERIMENTS:**
+**PARAGRAPHS - Experiments**
  - [ ] Goal of this thesis is to evaluate LLMs for functinoal coverage -> under some constrains we propose, it can be evaluated automatically.
  - [ ] LLMs are better for python than verilog -> we checked if it will be stronger in generation of python coverage code - cocotb.
  - [ ] We also noticed better generation of python coverage rather than verilog -> python coverage can by transformed to verilog one.
 
-**Implications - if everything will go as planned**
+**PARAGRAPHS - Implications**
  - [ ] It was shown that LLMs work in python better -> we propose approach of transformation task into more suitable environmet - python.
  - [ ] There are still gaps in LLM generation for functional coverage -> this article give nice starting ground - evaluation and approach.
 
+
 ## Large Language Models
-...
+**LLMs are next word predictors trained on large datasets -> They are cappable of memorizing and doing some easy logical steps.**
+ - [ ] Cappable  to generate source code from natural language.
+
+**The memory capabilities depends on their training and size -> Really good models are expensive, but there are providers.**
+ - [ ] Comparision of performance based on the model size.
+ - [ ] Some examples of LLMs companies, e.g.: MS, OpenAI, Meta, Anthropic.
+ - [ ] Some info about how cheap it is.
+
+**To use some model, we must send data to 3rd party -> Usage of large 3rd party LLM is not an viable option.**
+ - [ ] Since the models are large, and run on some 3rd party server, we must trust that party.
+ - [ ] This can be really problematic for many chip design companies.
+
+**Good solution is to have smaller LLM that perform well just on single task -> Tiny LLM can outperform even the larger ones.**
+ - [ ] There are LLMs that can run easily on computer graded HW.
+ - [ ] Such LLMs are trained just on a single task and they do it well.
+ - [ ] Mention RTL LLM that perform better than GPT-4.
+
+**Current LLMs knowladge about functional coverage is unknown -> There is a need for dataset and benchmark.**
+ - [ ] Mention there is similar work, but it still miss the coverage part.
 
 ## Dataset
-...
+**Dataset targeting the evaluation was created -> It contains a lot of examples.**
+ - [ ] Design can vary in functionality, thus also in testing goals - FSM, ALU, ...
+ - [ ] Dataset covers various design types, such as ...
+ - [ ] The requrements cover various types of requrements: sequences, bins, ignored or illegal values, conditioning.
 
-## Method
-...
+**Evaluation such number of examples on many models would be tadious -> Manual evaluator using formal methods was created.**
+ - [ ] We want to compare numerous models on large amount of examples.
+ - [ ] Every new model would need to be manually reevaluated.
+ - [ ] Evaluation must consider possibility to express the same condition using different expression + EXAMPLE.
+ - [ ] The same representation of bins we want to capture can be also expressed differently + EXAMPLE.
+
+**Functional coverage can be really complicated -> Dataset and evaluator must enforce some simplification.**
+ - [ ] Tell about reference manual and the complex representation in it.
+ - [ ] Mention cross, its compleixty, and reason about why we avoided it.
+
+**PARAGRAPHS - Proposed simplifications:**
+ - [ ] Allowed syntax is normal, illegal and ignore bins. Normal sequences. Condition of all types of bins.
+ - [ ] **IGNORED SEQUENCES ARE UNDER CONSIDERATION, SHOULD I IGNORE THEM?**
+ - [ ] Show the simplified subset of syntax we used - EXAMPLE.
+
+**PARAGRAPHS - Evaluation:**
+ - [ ] Bins are compared easily - just check if they capture all the values in similar manner - all / at leas one.
+ - [ ] Sequences are compared using **TBD**.
+ - [ ] Conditions are compared using SAT solver, that check whether it is satisfiable that condition1 != condition2.
+
+```
+ALORITHM: showing how the evaluation, or better said comparision, of two coverage code is done.
+```
+
+**Final form of dataset is thus tuple: natural language requirement + python code capturing functionality for evaluation.**
+ - [ ] Show some example within the dataset.
+ - [ ] Describe the example shortly.
+
+```
+FIGURE: Show how the evaluation of the dataset is done: prompting, generating, evaluating.
+```
+
+
+## Code generation approaches
+**Goal is to fully exercise current cappabilities of LLMs -> proposal of two approaches - prompt engineering and usage of python.**
+ - [ ] Again mention in what they are good and bad at.
+ - [ ] This can be limited by clearly stating the context of the problem.
+ - [ ] In addition, we can change the problem into a domain, they are good at.
+
+**PARAGRAPHS - Prompt engineering approach:**
+ - [ ] Some general info about prompt engineering.
+ - [ ] Some info about prompting we used - EXAMPLES.
+
+**PARAGRAPHS - Python usage approach:**
+ - [ ] Definition of functionality that were implemented into CoCoTB.
+ - [ ] Describe some simple use case - EXAMPLE.
+ - [ ] Show some prompt result.
+ - [ ] Mention and show conversion to system verilog code - EXAMPLE.
+
 
 ## Results
-...
+**PARAGRAPHS:**
+ - [ ] Mention models we tested with approach - single shot, pick the best outcome.
+ - [ ] Graphs and tables.
+ - [ ] Some tiny conclusion?
+
 
 ## Future work
-...
+**PARAGRAPHS:**
+ - [ ] This work can be improved to work on more complex tasks: cross, sampling, ...
+ - [ ] We can finetune LLMs to produce directly functional coverage in system verilog rather than python and optional conversion to system verilog.
+ - [ ] Similar approach might be suitable for other parts (assertions, property checking, formal, data generation)?
 
 ## Conclusion
-...
+**PARAGRAPH:**
+ - [ ] Again briefly describe what wwas done and results we obtained - some strong PITCH
 
-In the future, we can further improve this process by filtering.
 
 ---
 
