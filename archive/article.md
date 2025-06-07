@@ -90,6 +90,7 @@ Mostly verification engineers with interest in research.
 
 ## Introduction
 **Functional coverage is importan matric -> used to tell when verification is done if specification is done properly.**
+Code coverage is not enough - it does not directly check code functionality, might not find all bugs (Coverage cookbook).
 Tells when the functionality described in specification is implemented and tested (Coverage cookbook).
 Functional coverage model needs intentification of functionality and (Coverage cookbook).
 Manual implementation can cause some holes made by humans (Coverage cookbook).
@@ -107,8 +108,16 @@ As can be seen in this evaluation, LLMs have still some problems with HDL (VHDL 
 There are emerging models to generate RTL (LLM for RTL).
 There is also an ongoing research on TB generation, but it misses coverage (LLM for naive TB).
 
+**Mention other approaches:**
+Formal method is not suitable (https://ieeexplore.ieee.org/abstract/document/7527350).
+
 **PARAGRAPHS - Experiments**
- - [ ] Goal of this thesis is to evaluate LLMs for functinoal coverage -> under some constrains we propose, it can be evaluated automatically.
+ - [ ] **In bullet points:**
+   - Evaluate LLMs for coverage generation usint automatic evaluation.
+   - Propose idea of generating code in python that is transformed back to systemverilog.
+   - **TODO: based on the article.**
+ - [ ] ...
+ - [ ] Goal of this paper is to evaluate LLMs for functinoal coverage -> under some constrains we propose, it can be evaluated automatically.
  - [ ] LLMs are better for python than verilog -> we checked if it will be stronger in generation of python coverage code - cocotb.
  - [ ] We also noticed better generation of python coverage rather than verilog -> python coverage can by transformed to verilog one.
 
@@ -139,12 +148,14 @@ There is also an ongoing research on TB generation, but it misses coverage (LLM 
  - [ ] Mention there is similar work, but it still miss the coverage part.
 
 ## Dataset
+Add descripion of designs and reasoning for their choice.
+
 **Dataset targeting the evaluation was created -> It contains a lot of examples.**
  - [ ] Design can vary in functionality, thus also in testing goals - FSM, ALU, ...
  - [ ] Dataset covers various design types, such as ...
  - [ ] The requrements cover various types of requrements: sequences, bins, ignored or illegal values, conditioning.
 
-**Evaluation such number of examples on many models would be tadious -> Manual evaluator using formal methods was created.**
+**Evaluation such number of examples on many models would be tadious -> Automatic evaluator using formal methods was created.**
  - [ ] We want to compare numerous models on large amount of examples.
  - [ ] Every new model would need to be manually reevaluated.
  - [ ] Evaluation must consider possibility to express the same condition using different expression + EXAMPLE.
@@ -176,7 +187,6 @@ ALORITHM: showing how the evaluation, or better said comparision, of two coverag
 FIGURE: Show how the evaluation of the dataset is done: prompting, generating, evaluating.
 ```
 
-
 ## Code generation approaches
 **Goal is to fully exercise current cappabilities of LLMs -> proposal of two approaches - prompt engineering and usage of python.**
  - [ ] Again mention in what they are good and bad at.
@@ -186,26 +196,28 @@ FIGURE: Show how the evaluation of the dataset is done: prompting, generating, e
 **PARAGRAPHS - Prompt engineering approach:**
  - [ ] Some general info about prompt engineering.
  - [ ] Some info about prompting we used - EXAMPLES.
+ - [ ] Example of final result in real simulation.
 
 **PARAGRAPHS - Python usage approach:**
  - [ ] Definition of functionality that were implemented into CoCoTB.
  - [ ] Describe some simple use case - EXAMPLE.
  - [ ] Show some prompt result.
  - [ ] Mention and show conversion to system verilog code - EXAMPLE.
+ - [ ] Example of final result in real simulation.
 
 
 ## Results
 **PARAGRAPHS:**
  - [ ] Mention models we tested with approach - single shot, pick the best outcome.
  - [ ] Graphs and tables.
- - [ ] Some tiny conclusion?
+ - [ ] Some tiny summary?
 
 
 ## Future work
 **PARAGRAPHS:**
  - [ ] This work can be improved to work on more complex tasks: cross, sampling, ...
  - [ ] We can finetune LLMs to produce directly functional coverage in system verilog rather than python and optional conversion to system verilog.
- - [ ] Similar approach might be suitable for other parts (assertions, property checking, formal, data generation)?
+ - [ ] Similar approach might be suitable for other parts (assertions, uvm test (stimuli)).
 
 ## Conclusion
 **PARAGRAPH:**
