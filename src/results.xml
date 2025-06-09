@@ -1,6 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1749469378" />
-    <testcase name="test_random_stimuli" classname="test_arithmetic_unit" file="/home/jan/git/coge/src/test_arithmetic_unit.py" lineno="54" time="3.428105115890503" sim_time_ns="54693.001" ratio_time="15954.29520129888" />
-  </testsuite>
-</testsuites>
