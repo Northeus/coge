@@ -1,14 +1,15 @@
 # TODO:
-# - [x] Implement simple design (arithmetic unit with delayed multiplication).
-# - [x] Implement simple CoCoTB random stimuli testbanch.
-# - [x] Log code coverage information in the testbench.
-# - [x] Create functional coverage API for CoCoTB.
-# - [ ] Log functional coverage information in the testbench.
-# - [ ] Plot functional vs code coverage information.
-# - [ ] Generate functional coverage using LLMs.
-# - [ ] Log syntax errors contained in the generated code.
-# - [ ] Transform CoCoTB testbench into UVM.
-# - [ ] Chack that functional coverage contains specific values.
+# - [ ] Create CoCoTB testbench executed from python.
+# - [ ] Scrap verilator code coverage info into some datastructure (e.g., dict).
+# - [ ] Scrap functional coverage info into some datastructure (e.g., dict).
+# - [ ] Parametrize executed testbench based on number of transactions.
+# - [ ] Create plot consisting of code and functional coverage closure over time.
+# - [ ] Add automatic DUT connection - find all necessary ports and keep them in dict.
+# - [ ] Automatic clock generation - create clock provided clock signal name.
+# - [ ] Automatic transaction generation - create transaction provided inputs & action.
+# - [ ] Automatic random stimuli generation using data from generated transactions.
+# - [ ] Check that functional coverage contains some specific values, ranges, sequences.
+# - [ ] REFACTOR. ^^
 from __future__ import annotations
 
 import asyncio
