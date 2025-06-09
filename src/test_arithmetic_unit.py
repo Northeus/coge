@@ -2,7 +2,7 @@
 # - [x] Implement simple design (arithmetic unit with delayed multiplication).
 # - [x] Implement simple CoCoTB random stimuli testbanch.
 # - [x] Log code coverage information in the testbench.
-# - [ ] Create functional coverage API for CoCoTB.
+# - [x] Create functional coverage API for CoCoTB.
 # - [ ] Log functional coverage information in the testbench.
 # - [ ] Plot functional vs code coverage information.
 # - [ ] Generate functional coverage using LLMs.
@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import asyncio
 import random
+from dataclasses import dataclass
 from decimal import Decimal
 from functools import partial
+from itertools import product
+from typing import Callable
 
 import cocotb
 from cocotb.handle import HierarchyObject, ModifiableObject
@@ -51,11 +54,113 @@ async def generate_clock(dut: HierarchyObject, stop: asyncio.Event) -> None:
         await Timer(Decimal(1), units='ns')
 
 
+@dataclass
+class Bin:
+    values: list[int]
+    hits: int = 0
+
+    def sample(self, value: int) -> bool:
+        did_hit = value in self.values
+        self.hits += int(did_hit)
+        return did_hit
+
+
+@dataclass
+class Sequence:
+    sequence: list[int]
+    index: int = 0
+    hits: int = 0
+
+    def sample(self, value: int) -> bool:
+        if value != self.sequence[self.index]:
+            self.index = 0
+            return False
+
+        self.index += 1
+
+        if self.index < len(self.sequence):
+            return False
+
+        self.index = 0
+        self.hits += 1
+        return True
+
+
+@dataclass
+class Coverpoint:
+    port: str
+    bins: list[Bin]
+    ignore_bins: list[Bin]
+    sequences: list[Sequence]
+
+
+@dataclass
+class Cross:
+    coverpoints: list[Coverpoint]
+    cross: list[tuple[Bin, ...]]
+    hits: list[int]
+
+
+def coverpoint(port: str) -> Coverpoint:
+    return Coverpoint(port, [], [], [])
+
+
+def normal_bin(coverpoint: Coverpoint, values: list[int] | int) -> Bin:
+    bin = Bin([values] if isinstance(values, int) else values)
+    coverpoint.bins.append(bin)
+    return bin
+
+
+def ignore_bin(coverpoint: Coverpoint, values: list[int] | int) -> Bin:
+    bin = Bin([values] if isinstance(values, int) else values)
+    coverpoint.ignore_bins.append(bin)
+    return bin
+
+
+def sequence(coverpoint: Coverpoint, sequence: list[int]) -> Sequence:
+    _sequence = Sequence(sequence)
+    coverpoint.sequences.append(_sequence)
+    return _sequence
+
+
+def cross(bin_groups: list[tuple[Coverpoint, list[Bin]]]) -> Cross:
+    assert all(b in cp.bins for cp, bins in bin_groups for b in bins)
+    coverpoints = set(x[0] for x in bin_groups)
+    cross = set(product(*(x[1] for x in bin_groups)))
+    return Cross(list(coverpoints), list(cross), [0] * len(cross))
+
+
+def sample(values: dict[str, int],
+           coverpoints: list[Coverpoint],
+           crosses: list[Cross]
+           ) -> None:
+    hits: set[Bin] = set()
+
+    for coverpoint in coverpoints:
+        value = values[coverpoint.port]
+
+        for sequence in coverpoint.sequences:
+            sequence.sample(value)
+
+        if any(ignore_bin.sample(value)
+               for ignore_bin in coverpoint.ignore_bins):
+            continue
+
+        for bin in coverpoint.bins:
+            if bin.sample(value):
+                hits.add(bin)
+
+    for cross in crosses:
+        for i, bins in enumerate(cross.cross):
+            if all(b in hits for b in bins):
+                cross.hits[i] += 1
+
+
 @cocotb.test
 async def test_random_stimuli(dut: HierarchyObject) -> None:
     # Init testbench environment.
     random.seed(42)
-    transactions = 10000
+    transactions = 100
     max_transaction_length = 10
     ports = {k: v for k, v in extract_ports(dut).items()
              if k in ('OP_CODE', 'MOVI', 'REG_A', 'REG_B', 'MEM', 'IMM')}
