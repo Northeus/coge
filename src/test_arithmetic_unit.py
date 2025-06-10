@@ -1,5 +1,4 @@
 # TODO:
-# - [ ] Create plot consisting of code and functional coverage closure over time.
 # - [ ] Add automatic DUT connection - find all necessary ports and keep them in dict.
 # - [ ] Automatic clock generation - create clock provided clock signal name.
 # - [ ] Automatic transaction generation - create transaction provided inputs & action.
@@ -173,7 +172,7 @@ def print_coverage(coverpoints: list[Coverpoint],
         print(f'\tCoverpoint [{coverpoint.port}]:')
 
         for bin in coverpoint.bins:
-            print(f'\t\tBin {bin.values}: {bin.hits}')
+            print(f'\t\tBin {bin.value_range}: {bin.hits}')
 
         for sequence in coverpoint.sequences:
             print(f'\t\tSequence {sequence.sequence}: {sequence.hits}')
@@ -183,6 +182,12 @@ def print_coverage(coverpoints: list[Coverpoint],
 
         for i, target in enumerate(cross.cross):
             print(f'\t\tTarget {target}: {cross.hits[i]}')
+
+
+@dataclass
+class Result:
+    coverpoints: list[Coverpoint]
+    crosses: list[Cross]
 
 
 @cocotb.test
@@ -260,10 +265,6 @@ async def test_random_stimuli(dut: HierarchyObject) -> None:
     stop.set()
 
     # print_coverage(coverpoints, crosses)
-    @dataclass
-    class Result:
-        coverpoints: list[Coverpoint]
-        crosses: list[Cross]
     result = Result(coverpoints, crosses)
     result_json = json.dumps(dataclasses.asdict(result), indent=2)
 
