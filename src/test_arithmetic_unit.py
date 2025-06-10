@@ -1,8 +1,4 @@
 # TODO:
-# - [ ] Create CoCoTB testbench executed from python.
-# - [ ] Scrap verilator code coverage info into some datastructure (e.g., dict).
-# - [ ] Scrap functional coverage info into some datastructure (e.g., dict).
-# - [ ] Parametrize executed testbench based on number of transactions.
 # - [ ] Create plot consisting of code and functional coverage closure over time.
 # - [ ] Add automatic DUT connection - find all necessary ports and keep them in dict.
 # - [ ] Automatic clock generation - create clock provided clock signal name.
@@ -13,16 +9,23 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import random
+import json
+import os
 from dataclasses import dataclass
 from decimal import Decimal
 from functools import partial
 from itertools import product
-from typing import Callable
+from pathlib import Path
 
 import cocotb
 from cocotb.handle import HierarchyObject, ModifiableObject
 from cocotb.triggers import Timer, RisingEdge
+
+
+TRANSACTIONS = 10
+TRANSACTIONS = int(os.getenv('TRANSACTIONS', TRANSACTIONS))
 
 
 def parse_port(dut: HierarchyObject, name: str) -> ModifiableObject | None:
@@ -31,10 +34,12 @@ def parse_port(dut: HierarchyObject, name: str) -> ModifiableObject | None:
     port = getattr(dut, name)
     return port if isinstance(port, ModifiableObject) else None
 
+
 def port_width(port: ModifiableObject) -> int:
     width = port.__len__()
     assert isinstance(width, int)
     return width
+
 
 def extract_ports(dut: HierarchyObject) -> dict[str, ModifiableObject]:
     return {x._name: x
@@ -57,11 +62,12 @@ async def generate_clock(dut: HierarchyObject, stop: asyncio.Event) -> None:
 
 @dataclass
 class Bin:
-    values: range
+    value_range: tuple[int, int]
     hits: int = 0
 
     def sample(self, value: int) -> bool:
-        did_hit = value in self.values
+        lower, upper = self.value_range
+        did_hit = lower <= value <= upper
         self.hits += int(did_hit)
         return did_hit
 
@@ -106,14 +112,14 @@ def coverpoint(port: str) -> Coverpoint:
     return Coverpoint(port, [], [], [])
 
 
-def normal_bin(coverpoint: Coverpoint, values: range | int) -> Bin:
-    bin = Bin(range(values, values + 1) if isinstance(values, int) else values)
+def normal_bin(coverpoint: Coverpoint, values: tuple[int, int] | int) -> Bin:
+    bin = Bin((values, values) if isinstance(values, int) else values)
     coverpoint.bins.append(bin)
     return bin
 
 
-def ignore_bin(coverpoint: Coverpoint, values: range | int) -> Bin:
-    bin = Bin(range(values, values + 1) if isinstance(values, int) else values)
+def ignore_bin(coverpoint: Coverpoint, values: tuple[int, int] | int) -> Bin:
+    bin = Bin((values, values) if isinstance(values, int) else values)
     coverpoint.ignore_bins.append(bin)
     return bin
 
@@ -183,7 +189,7 @@ def print_coverage(coverpoints: list[Coverpoint],
 async def test_random_stimuli(dut: HierarchyObject) -> None:
     # Init testbench environment.
     random.seed(42)
-    transactions = 100
+    transactions = TRANSACTIONS
     max_transaction_length = 10
     ports = {k: v for k, v in extract_ports(dut).items()
              if k in ('OP_CODE', 'MOVI', 'REG_A', 'REG_B', 'MEM', 'IMM')}
@@ -198,9 +204,9 @@ async def test_random_stimuli(dut: HierarchyObject) -> None:
         for j in range(4):
             if i != j:
                 sequence(coverpoints[0], [i, j])
-    normal_bin(coverpoints[1], range(0, 2**30))
-    normal_bin(coverpoints[1], range(2**30, 2**31))
-    normal_bin(coverpoints[1], range(2**31, 2**32))
+    normal_bin(coverpoints[1], (0, 2**30))
+    normal_bin(coverpoints[1], (2**30, 2**31))
+    normal_bin(coverpoints[1], (2**31, 2**32))
     crosses = [cross([(cp, cp.bins) for cp in coverpoints])]
 
     # Start clock.
@@ -253,7 +259,13 @@ async def test_random_stimuli(dut: HierarchyObject) -> None:
 
     stop.set()
 
-    # To get coverage info, run and check newly created dir `logs`.
-    # `verilator_coverage --annotate logs coverage.dat --annotate-min 1`
+    # print_coverage(coverpoints, crosses)
+    @dataclass
+    class Result:
+        coverpoints: list[Coverpoint]
+        crosses: list[Cross]
+    result = Result(coverpoints, crosses)
+    result_json = json.dumps(dataclasses.asdict(result), indent=2)
 
-    print_coverage(coverpoints, crosses)
+    functional_coverage_file = Path(__file__).resolve().parent / 'func.json'
+    functional_coverage_file.write_text(result_json)
