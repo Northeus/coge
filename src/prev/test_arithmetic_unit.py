@@ -1,10 +1,3 @@
-# TODO:
-# - [ ] Add automatic DUT connection - find all necessary ports and keep them in dict.
-# - [ ] Automatic clock generation - create clock provided clock signal name.
-# - [ ] Automatic transaction generation - create transaction provided inputs & action.
-# - [ ] Automatic random stimuli generation using data from generated transactions.
-# - [ ] Check that functional coverage contains some specific values, ranges, sequences.
-# - [ ] REFACTOR. ^^
 from __future__ import annotations
 
 import asyncio
@@ -197,7 +190,7 @@ async def test_random_stimuli(dut: HierarchyObject) -> None:
     transactions = TRANSACTIONS
     max_transaction_length = 10
     ports = {k: v for k, v in extract_ports(dut).items()
-             if k in ('OP_CODE', 'MOVI', 'REG_A', 'REG_B', 'MEM', 'IMM')}
+             if k in ('OP_CODE', 'MOVI', 'REG_A', 'REG_B', 'MEM', 'IMM', 'ACT')}
     stop = asyncio.Event()
     log_transactions = False
 
@@ -227,11 +220,11 @@ async def test_random_stimuli(dut: HierarchyObject) -> None:
 
     # Perform transactions.
     await RisingEdge(dut.CLK)
-    for i in range(1, transactions + 1):
+    for _ in range(transactions):
         stimuli = random_inputs(ports)
         for name, value in stimuli.items():
             ports[name].value = value
-        dut.ACT.value = 1
+        await RisingEdge(dut.CLK)
 
         values = {'OP_CODE': stimuli['OP_CODE'],
                   'REG_A': stimuli['REG_A']}
@@ -246,25 +239,9 @@ async def test_random_stimuli(dut: HierarchyObject) -> None:
             print(f'        MEM     = {ports['MEM'].value.integer}')
             print(f'        IMM     = {ports['IMM'].value.integer}')
 
-        for i in range(1, max_transaction_length + 1):
-            await RisingEdge(dut.CLK)
-            dut.ACT.value = 0
-
-            if dut.DATA_VALID == 1:
-                break
-
-            if i == max_transaction_length:
-                stop.set()
-                print('[ERROR] Transaction did not finish in time.')
-                return
-
-            if log_transactions:
-                print('[INFO] Transaction outputs:')
-                print(f'        DATA    = {dut.DATA.value.integer}')
-
     stop.set()
 
-    # print_coverage(coverpoints, crosses)
+    print_coverage(coverpoints, crosses)
     result = Result(coverpoints, crosses)
     result_json = json.dumps(dataclasses.asdict(result), indent=2)
 

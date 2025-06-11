@@ -1,5 +1,31 @@
 # CoGe
 
+
+# Workflow
+ 1. Provide interface, spec, and requirements (focus of verification).
+ 1. Generate **single** testbench per DUT.
+ 1. Find reset and clock, use them.
+ 1. Generate some coverage using LLMs.
+ 1. Syntax check.
+ 1. Run simulation, terminate if time reach x * desired length,
+    reset with very low probability during run.
+ 1. Evaluation:
+    * Functional coverage is geraeter than code coverage => lower points.
+    * Check that some specific value is in the Bin / Sequence.
+    * Illegal bins were not hit without simulation stop.
+
+# Ensure
+ - Same seed produce same values.
+
+# Hints
+ - Cross usually on control flow.
+ - Different distributions for each signal.
+
+# Additional work
+ - Create our coverage that is good and compare results with the LLMs coverage.
+
+
+
 ---
 
 # Testbench generation

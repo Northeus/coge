@@ -1,3 +1,8 @@
+# TODO:
+# - [ ] Create demo that:
+#   * Create some coverage examples (multiple)
+#   * Generate some testbenches for DUT arithmetic_unit using that coverage.
+#   * Create reports.
 import json
 import subprocess
 from pathlib import Path
@@ -77,7 +82,7 @@ def compute_func_cov(data: Result) -> float:
 
 
 def multiple_runs():
-    transactions_list = list(range(20))
+    transactions_list = list(range(50))
     code_cov = []
     func_cov = []
     for transactions in transactions_list:
@@ -95,5 +100,5 @@ def multiple_runs():
 
 
 if __name__ == '__main__':
-    # run()
+    # run(transactions=1000000)
     multiple_runs()
