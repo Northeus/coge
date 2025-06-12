@@ -142,6 +142,8 @@ def load(dataset_file: Path) -> list[Design]:
     return [_parse_design(_design, folder) for _design in _designs]
 
 
+# ─────────────────────────[ ⚙️  Print dataset  ⚙️ ]─────────────────────────
+
 def _print_coverpoint(cp: Coverpoint, prefix: str = '') -> None:
     at_least = lambda x: f'at least {x.at_least}' if x.at_least > 1 else ''
     print(prefix, end='')

@@ -37,12 +37,12 @@ Before we start, coverage must be implemented:
  - [ ] Add at_least kwarg.
 
 First we need simple testbanch that can run on one of the designs:
- - [ ] Hardcode seed.
- - [ ] Hardcode reset and clock hooks to the DUT.
- - [ ] Generate random stimuli on hardcoded input ports of the design.
- - [ ] Add some coverage (hardcoded) into the testbench (use the one from dataset).
- - [ ] Create simple runner (hardcoded) in python and run code.
- - [ ] Store coverage results into some json file with hardcoded path.
+ - [x] Hardcode seed.
+ - [x] Hardcode reset and clock hooks to the DUT.
+ - [x] Generate random stimuli on hardcoded input ports of the design.
+ - [x] Add some coverage (hardcoded) into the testbench.
+ - [x] Create simple runner (hardcoded) in python and run code.
+ - [x] Store coverage results into some json file with hardcoded path.
 
 Now make it more general:
  - [ ] Seed using ENV variable.
