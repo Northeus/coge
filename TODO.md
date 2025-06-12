@@ -1,19 +1,14 @@
 # TODO
 There are following separate sections to do:
- 1. Create dattaset.
+ 1. Create dataset.
  1. Implement testbench.
  1. Implement testbench runner.
  1. Evaluate test results.
  1. Generate code.
 
  ## Create dataset
-There will be various designs to cover different types of circuits:
- - [ ] Priority encoder (combinational, simple).
- - [ ] Simple ALU (combinational, simple).
- - [ ] Counter (sequential, simple.
- - [ ] ALU (sequential, moderate)
- - [ ] Pattern detector (sequential, moderate).
- - [ ] FIR filter (sequential, complex).
+There will be various designs to cover different types of circuits, but for now just:
+ - [x] ALU (sequential, moderate)
 
 For each design, we will have to do the following:
  - Create short description - specification.
@@ -29,9 +24,9 @@ For each design, we will have to do the following:
  - Create short documentation of the dataset format and content.
 
 After that finish it by:
- - [ ] Create `dataset` folder, store there `dataset.json`
- - [ ] Add there all the designs code and store paths into `dataset.json`.
- - [ ] Create function to load and print out dataset content in reasonable manner.
+ - [x] Create `dataset` folder, store there `dataset.json`
+ - [x] Add there all the designs code and store paths into `dataset.json`.
+ - [x] Create function to load and print out dataset content in reasonable manner.
 
 ## Implement testbench
 Keep all the code in the `testbench.py` file for now.

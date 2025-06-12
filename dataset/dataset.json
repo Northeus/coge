@@ -1,0 +1,42 @@
+[
+    {
+        "name": "ALU",
+        "design_file": "designs/ALU.sv",
+        "description_file": "designs/ALU.txt",
+        "requirements": [
+            {
+                "description": "Check that RST signal is set and reset at least 5 times.",
+                "coverpoints": [
+                    {
+                        "port": "RST",
+                        "sequence": [0, 1],
+                        "at_least": 5
+                    },
+                    {
+                        "port": "RST",
+                        "sequence": [1, 0],
+                        "at_least": 5
+                    }
+                ]
+            },
+            {
+                "description": "Check that all OP signal values occured when ACT was set to 1.",
+                "coverpoints": [
+                    {
+                        "cross": [
+                            {
+                                "port": "ACT",
+                                "values": [1]
+                            },
+                            {
+                                "port": "OP",
+                                "values": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+
+]

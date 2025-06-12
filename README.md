@@ -1,5 +1,8 @@
 # CoGe
 
+```
+# ───────────────────────────────[ ⚙️  .  ⚙️ ]───────────────────────────────
+```
 
 # Workflow
  1. Provide interface, spec, and requirements (focus of verification).
