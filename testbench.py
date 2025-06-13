@@ -5,6 +5,7 @@ import json
 import os
 import random
 import re
+from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
 from functools import partial
@@ -16,6 +17,7 @@ import cocotb
 import dacite
 from cocotb.handle import HierarchyObject, ModifiableObject
 from cocotb.triggers import Timer, RisingEdge
+from cocotb.utils import get_sim_time
 
 
 # ───────────────────────────[ ⚙️  Test set-up  ⚙️ ]──────────────────────────
@@ -29,6 +31,9 @@ RESET_N_NAMES = ('rstn', 'rst_n', 'rst_neg', 'resetn', 'reset_n', 'reset_neg')
 class Config:
     seed: int | None
     code: Path
+    result_path: Path
+    time_limit: int = 1000
+    reset_prob: float = 0.0
 
     @classmethod
     def load_from_env(cls) -> Config:
@@ -40,7 +45,12 @@ class Config:
         code = Path(os.environ['TB_CODE'])
         assert code.exists()
 
-        return Config(seed, code)
+        reset_prob = float(os.environ.get('TB_RESER_PROB', '0'))
+        time_limit = int(os.environ.get('TB_TIME_LIMIT', '1000'))
+
+        result_path = Path(os.environ['TB_RESULT'])
+
+        return Config(seed, code, result_path, time_limit, reset_prob)
 
 
 @dataclass(frozen=True)
@@ -74,7 +84,7 @@ def _find_reset_n(ports: list[_Port]) -> _Port | None:
 class Bin:
     port: str
     value_range: tuple[int, int]
-    hits: int = field(default=1, hash=False)
+    hits: int = field(default=0, hash=False)
     at_least: int = 1
 
     def sample(self, value: int) -> bool:
@@ -87,18 +97,14 @@ class Bin:
 @dataclass
 class Sequence:
     port: str
-    sequence: list[int]
-    index: int = 0
+    sequence: deque
+    captured: deque
     hits: int = 0
     at_least: int = 1
 
     def sample(self, value: int) -> bool:
-        if value != self.sequence[self.index]:
-            self.index = 0
-            return False
-
-        self.index = (self.index + 1) % len(self.sequence)
-        did_hit = self.index == 0
+        self.captured.append(value)
+        did_hit = self.captured == self.sequence
         self.hits += did_hit
         return did_hit
 
@@ -151,12 +157,18 @@ class Coverage:
 
 
     def save(self, data_file: Path) -> None:
-        data_file.write_text(json.dumps(dataclasses.asdict(self)))
+        def deque_default(obj: object) -> object:
+            if isinstance(obj, deque):
+                return list(obj)
+            raise TypeError
+
+        data_file.write_text(json.dumps(dataclasses.asdict(self),
+                                        default=deque_default))
 
     @classmethod
     def load(cls, data_file: Path) -> Coverage:
         data = json.loads(data_file.read_text())
-        config = dacite.Config(cast=[tuple])
+        config = dacite.Config(cast=[tuple, deque])
         return dacite.from_dict(Coverage, data, config)
 
     def print(self) -> None:
@@ -169,7 +181,7 @@ class Coverage:
                     print(f'  * {name} {str(bin.value_range):>50}'
                           f' {bin.hits:>10} hits')
             for sequence in coverpoint.sequences:
-                print(f'  * Sequence {str(sequence.sequence):>50}'
+                print(f'  * Sequence {str(list(sequence.sequence)):>50}'
                       f' {sequence.hits:>10} hits')
 
         for cross in self.crosses:
@@ -231,7 +243,10 @@ def sequence(coverpoint: Coverpoint,
              sequence: list[int],
              at_least: int = 1
              ) -> Sequence:
-    seq = Sequence(coverpoint.port, sequence, at_least=at_least)
+    seq = Sequence(coverpoint.port,
+                   deque(sequence),
+                   deque(maxlen=len(sequence)),
+                   at_least=at_least)
     coverpoint.sequences.append(seq)
     return seq
 
@@ -247,6 +262,7 @@ def _find_ports(dut: HierarchyObject, code: Path) -> list[_Port]:
     objects =  filter(lambda x: isinstance(x, ModifiableObject),
                       map(partial(getattr, dut), names))
 
+    # TODO: mention this requirement of module ports in datasets README.md
     pattern = re.compile(
         r'\b(input|output|inout)\b'
         r'\s+(?:logic|wire|reg)?'
@@ -293,344 +309,34 @@ async def test_module(dut: HierarchyObject) -> None:
 
     reset = _find_reset(ports)
     reset_n = _find_reset_n(ports)
-    if reset is not None or reset_n is not None:
-        for value in (0, 1, 0):
-            _set_value(reset, value)
-            _set_value(reset_n, not value)
-            await _next_clock_tick(clock)
-
 
     ...
     # TODO: remove this hardcoded coverage
-    movi_cp = coverpoint('MOVI')
-    movi_bins = normal_bins(movi_cp, (0, 3))
-    op_cp = coverpoint('OP')
-    op_bins = normal_bins(op_cp, (0, 3))
-    normal_bin(op_cp, 2, at_least=5)
-    for op1, op2 in product(range(5, 8), range(5, 8)):
-        sequence(op_cp, [op1, op2])
-    op_movi_cross = cross([op_bins, movi_bins])
-    coverage = Coverage([op_cp, movi_cp], [op_movi_cross])
+    reset_cp = coverpoint('RST')
+    normal_bins(reset_cp, (0, 1), at_least=1)
+    sequence(reset_cp, [0, 1, 0])
+    coverage = Coverage([reset_cp], [])
     ...
 
-    input_ports = list(filter(lambda x: x.direction == 'input', ports))
-    for _ in range(1000):
-        values = {port.name: random.randint(0, 2**port.width - 1)
-                  for port in input_ports}
+    should_reset_iter = map(lambda x: random.random() < x,
+                            cycle((config.reset_prob,)))
+    should_reset_iter = chain((False, True, False), should_reset_iter)
+
+    ignored_ports = {reset and reset.name, reset_n and reset_n.name}
+    input_ports = filter(
+        lambda x: x.direction == 'input' and x.name not in ignored_ports,
+        ports)
+
+    while get_sim_time(units='ns') < config.time_limit:
+        should_reset = next(should_reset_iter)
+        _set_value(reset, int(should_reset))
+        _set_value(reset_n, not int(should_reset))
 
         for port in input_ports:
-            port.handle.value = values[port.name]
+            port.handle.value = random.randint(0, 2**port.width - 1)
 
+        values = {port.name: int(port.handle.value) for port in ports}
         coverage.sample_all(values)
         await _next_clock_tick(clock)
 
-    coverage.save(Path(__file__).resolve().parent / 'data.json')
-
-
-"""
-@cocotb.test
-async def test_random_stimuli(dut: HierarchyObject) -> None:
-    # Init testbench environment.
-    random.seed(42)
-    transactions = TRANSACTIONS
-    max_transaction_length = 10
-    ports = {k: v for k, v in extract_ports(dut).items()
-             if k in ('OP_CODE', 'MOVI', 'REG_A', 'REG_B', 'MEM', 'IMM', 'ACT')}
-    stop = asyncio.Event()
-    log_transactions = False
-
-    # Define functional coverage.
-    coverpoints = [coverpoint('OP_CODE'), coverpoint('REG_A')]
-    for i in range(4):
-        normal_bin(coverpoints[0], i)
-    for i in range(4):
-        for j in range(4):
-            if i != j:
-                sequence(coverpoints[0], [i, j])
-    normal_bin(coverpoints[1], (0, 2**30))
-    normal_bin(coverpoints[1], (2**30, 2**31))
-    normal_bin(coverpoints[1], (2**31, 2**32))
-    crosses = [cross([(cp, cp.bins) for cp in coverpoints])]
-
-    # Start clock.
-    await cocotb.start(generate_clock(dut, stop))
-
-    # Reset DUT.
-    dut.RST.value = 0
-    await Timer(Decimal(3), units='ns')
-    dut.RST.value = 1
-    await Timer(Decimal(4), units='ns')
-    dut.RST.value = 0
-    await Timer(Decimal(3), units='ns')
-
-    # Perform transactions.
-    await RisingEdge(dut.CLK)
-    for _ in range(transactions):
-        stimuli = random_inputs(ports)
-        for name, value in stimuli.items():
-            ports[name].value = value
-        await RisingEdge(dut.CLK)
-
-        values = {'OP_CODE': stimuli['OP_CODE'],
-                  'REG_A': stimuli['REG_A']}
-        sample(values, coverpoints, crosses)
-
-        if log_transactions:
-            print(f'[INFO] Transaction inputs (#{i})')
-            print(f'        OP_CODE = {ports['OP_CODE'].value.integer}')
-            print(f'        MOVI    = {ports['MOVI'].value.integer}')
-            print(f'        REG_A   = {ports['REG_A'].value.integer}')
-            print(f'        REG_B   = {ports['REG_B'].value.integer}')
-            print(f'        MEM     = {ports['MEM'].value.integer}')
-            print(f'        IMM     = {ports['IMM'].value.integer}')
-
-    stop.set()
-
-    print_coverage(coverpoints, crosses)
-    result = Result(coverpoints, crosses)
-    result_json = json.dumps(dataclasses.asdict(result), indent=2)
-
-    functional_coverage_file = Path(__file__).resolve().parent / 'func.json'
-    functional_coverage_file.write_text(result_json)
-
-
-
-
-
-
-
-
-
-from __future__ import annotations
-
-import asyncio
-import dataclasses
-import random
-import json
-import os
-from dataclasses import dataclass
-from decimal import Decimal
-from functools import partial
-from itertools import product
-from pathlib import Path
-
-import cocotb
-from cocotb.handle import HierarchyObject, ModifiableObject
-from cocotb.triggers import Timer, RisingEdge
-
-
-TRANSACTIONS = 10
-TRANSACTIONS = int(os.getenv('TRANSACTIONS', TRANSACTIONS))
-
-
-
-
-def random_inputs(ports: dict[str, ModifiableObject]) -> dict[str, int]:
-    return {name: random.randint(0, 2**port_width(port) - 1)
-            for name, port in ports.items()}
-
-
-async def generate_clock(dut: HierarchyObject, stop: asyncio.Event) -> None:
-    while not stop.is_set():
-        dut.CLK.value = 0
-        await Timer(Decimal(1), units='ns')
-        dut.CLK.value = 1
-        await Timer(Decimal(1), units='ns')
-
-
-@dataclass
-class Bin:
-    value_range: tuple[int, int]
-    hits: int = 0
-
-    def sample(self, value: int) -> bool:
-        lower, upper = self.value_range
-        did_hit = lower <= value <= upper
-        self.hits += int(did_hit)
-        return did_hit
-
-
-@dataclass
-class Sequence:
-    sequence: list[int]
-    index: int = 0
-    hits: int = 0
-
-    def sample(self, value: int) -> bool:
-        if value != self.sequence[self.index]:
-            self.index = 0
-            return False
-
-        self.index += 1
-
-        if self.index < len(self.sequence):
-            return False
-
-        self.index = 0
-        self.hits += 1
-        return True
-
-
-@dataclass
-class Coverpoint:
-    port: str
-    bins: list[Bin]
-    ignore_bins: list[Bin]
-    sequences: list[Sequence]
-
-
-@dataclass
-class Cross:
-    coverpoints: list[Coverpoint]
-    cross: list[tuple[Bin, ...]]
-    hits: list[int]
-
-
-def coverpoint(port: str) -> Coverpoint:
-    return Coverpoint(port, [], [], [])
-
-
-def normal_bin(coverpoint: Coverpoint, values: tuple[int, int] | int) -> Bin:
-    bin = Bin((values, values) if isinstance(values, int) else values)
-    coverpoint.bins.append(bin)
-    return bin
-
-
-def ignore_bin(coverpoint: Coverpoint, values: tuple[int, int] | int) -> Bin:
-    bin = Bin((values, values) if isinstance(values, int) else values)
-    coverpoint.ignore_bins.append(bin)
-    return bin
-
-
-def sequence(coverpoint: Coverpoint, sequence: list[int]) -> Sequence:
-    _sequence = Sequence(sequence)
-    coverpoint.sequences.append(_sequence)
-    return _sequence
-
-
-def cross(bin_groups: list[tuple[Coverpoint, list[Bin]]]) -> Cross:
-    # TODO: might remove duplicities in product...
-    assert all(b in cp.bins for cp, bins in bin_groups for b in bins)
-    coverpoints = list(x[0] for x in bin_groups)
-    cross = list(product(*(x[1] for x in bin_groups)))
-    return Cross(coverpoints, cross, [0] * len(cross))
-
-
-def sample(values: dict[str, int],
-           coverpoints: list[Coverpoint],
-           crosses: list[Cross]
-           ) -> None:
-    hits_id: set[int] = set()
-
-    for coverpoint in coverpoints:
-        value = values[coverpoint.port]
-
-        for sequence in coverpoint.sequences:
-            sequence.sample(value)
-
-        if any(ignore_bin.sample(value)
-               for ignore_bin in coverpoint.ignore_bins):
-            continue
-
-        for bin in coverpoint.bins:
-            if bin.sample(value):
-                hits_id.add(id(bin))
-
-    for cross in crosses:
-        for i, bins in enumerate(cross.cross):
-            if all(id(b) in hits_id for b in bins):
-                cross.hits[i] += 1
-
-
-def print_coverage(coverpoints: list[Coverpoint],
-                   crosses: list[Cross]
-                   ) -> None:
-    print('[INFO] Coverage:')
-
-    for coverpoint in coverpoints:
-        print(f'\tCoverpoint [{coverpoint.port}]:')
-
-        for bin in coverpoint.bins:
-            print(f'\t\tBin {bin.value_range}: {bin.hits}')
-
-        for sequence in coverpoint.sequences:
-            print(f'\t\tSequence {sequence.sequence}: {sequence.hits}')
-
-    for cross in crosses:
-        print(f'\tCross {list(x.port for x in cross.coverpoints)}:')
-
-        for i, target in enumerate(cross.cross):
-            print(f'\t\tTarget {target}: {cross.hits[i]}')
-
-
-@dataclass
-class Result:
-    coverpoints: list[Coverpoint]
-    crosses: list[Cross]
-
-
-@cocotb.test
-async def test_random_stimuli(dut: HierarchyObject) -> None:
-    # Init testbench environment.
-    random.seed(42)
-    transactions = TRANSACTIONS
-    max_transaction_length = 10
-    ports = {k: v for k, v in extract_ports(dut).items()
-             if k in ('OP_CODE', 'MOVI', 'REG_A', 'REG_B', 'MEM', 'IMM', 'ACT')}
-    stop = asyncio.Event()
-    log_transactions = False
-
-    # Define functional coverage.
-    coverpoints = [coverpoint('OP_CODE'), coverpoint('REG_A')]
-    for i in range(4):
-        normal_bin(coverpoints[0], i)
-    for i in range(4):
-        for j in range(4):
-            if i != j:
-                sequence(coverpoints[0], [i, j])
-    normal_bin(coverpoints[1], (0, 2**30))
-    normal_bin(coverpoints[1], (2**30, 2**31))
-    normal_bin(coverpoints[1], (2**31, 2**32))
-    crosses = [cross([(cp, cp.bins) for cp in coverpoints])]
-
-    # Start clock.
-    await cocotb.start(generate_clock(dut, stop))
-
-    # Reset DUT.
-    dut.RST.value = 0
-    await Timer(Decimal(3), units='ns')
-    dut.RST.value = 1
-    await Timer(Decimal(4), units='ns')
-    dut.RST.value = 0
-    await Timer(Decimal(3), units='ns')
-
-    # Perform transactions.
-    await RisingEdge(dut.CLK)
-    for _ in range(transactions):
-        stimuli = random_inputs(ports)
-        for name, value in stimuli.items():
-            ports[name].value = value
-        await RisingEdge(dut.CLK)
-
-        values = {'OP_CODE': stimuli['OP_CODE'],
-                  'REG_A': stimuli['REG_A']}
-        sample(values, coverpoints, crosses)
-
-        if log_transactions:
-            print(f'[INFO] Transaction inputs (#{i})')
-            print(f'        OP_CODE = {ports['OP_CODE'].value.integer}')
-            print(f'        MOVI    = {ports['MOVI'].value.integer}')
-            print(f'        REG_A   = {ports['REG_A'].value.integer}')
-            print(f'        REG_B   = {ports['REG_B'].value.integer}')
-            print(f'        MEM     = {ports['MEM'].value.integer}')
-            print(f'        IMM     = {ports['IMM'].value.integer}')
-
-    stop.set()
-
-    print_coverage(coverpoints, crosses)
-    result = Result(coverpoints, crosses)
-    result_json = json.dumps(dataclasses.asdict(result), indent=2)
-
-    functional_coverage_file = Path(__file__).resolve().parent / 'func.json'
-    functional_coverage_file.write_text(result_json)
-"""
+    coverage.save(config.result_path)

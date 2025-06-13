@@ -6,35 +6,6 @@
 # ───────────────────────────────[ ⚙️  .  ⚙️ ]───────────────────────────────
 ```
 
-There are following separate sections to do:
- 1. Create dataset.
- 1. Implement testbench.
- 1. Implement testbench runner.
- 1. Evaluate test results.
- 1. Generate code.
-
- ## Create dataset
-There will be various designs to cover different types of circuits, but for now just:
- - [x] ALU (sequential, moderate)
-
-For each design, we will have to do the following:
- - Create short description - specification.
- - Create some requirements - short sentences targeting verification focus.
- - Create some desired bins and sequences for requirements in json format:
-```json
-[
-    { "type": "bin",         "values": { "from": 0, "to": 14 }, "description": "..." },
-    { "type": "illegal bin", "value": 50,                       "description": "..." },
-    { "type": "sequence",    "sequence": [1, 0, 1, 1, 0],       "description": "..." },
-]
-```
- - Create short documentation of the dataset format and content.
-
-After that finish it by:
- - [x] Create `dataset` folder, store there `dataset.json`
- - [x] Add there all the designs code and store paths into `dataset.json`.
- - [x] Create function to load and print out dataset content in reasonable manner.
-
 ## Implement testbench
 Keep all the code in the `testbench.py` file for now.
 
@@ -56,8 +27,7 @@ Now make it more general:
  - [x] Find automatically clock and reset ports, use them if you find them.
  - [x] Find ports direction via string parsing of module and possibly names from cocotb.
  - [x] Automatically generate random stimuli just to the include ports.
- - [ ] Add small probability to reset during run (based on ENV variable - ON / OFF).
- - [ ] Add to results used ports for clock, reset and random stimuli generation.
+ - [x] Add small probability to reset during run (based on ENV variable - ON / OFF).
 
 Now lets improve the testbench by automatic coverage:
  - [ ] Functional coverage will be stored in some other file with path in ENV.

@@ -14,15 +14,18 @@ TOPLEVEL = 'ALU'
 
 
 def run() -> None:
+    rslt_file = ROOT / 'data.json'
+
     runner = get_runner(SIM)
     runner.build(sources=SOURCES, hdl_toplevel=TOPLEVEL,
                  always=False, clean=False,
                  build_args=['--coverage'])
     x = runner.test(hdl_toplevel=TOPLEVEL,
                     test_module='testbench',
-                    extra_env={'TB_CODE': str(SOURCES[0])})
+                    extra_env={'TB_CODE': str(SOURCES[0]),
+                               'TB_RESULT': str(rslt_file)})
     print(f'Tests done, result ({type(x)}): {x}')
-    data = Coverage.load(ROOT / 'data.json')
+    data = Coverage.load(rslt_file)
     data.print()
 
 
