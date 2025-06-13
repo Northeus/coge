@@ -1,4 +1,11 @@
 # TODO
+ - [ ] Improve dataset.
+ - [ ] Add small chance to trigger reset during simulation (do not exclude it).
+
+```
+# ───────────────────────────────[ ⚙️  .  ⚙️ ]───────────────────────────────
+```
+
 There are following separate sections to do:
  1. Create dataset.
  1. Implement testbench.
@@ -32,9 +39,9 @@ After that finish it by:
 Keep all the code in the `testbench.py` file for now.
 
 Before we start, coverage must be implemented:
- - [ ] Take the current implementation and possibly do tiny refactor.
- - [ ] Add illegal bins.
- - [ ] Add at_least kwarg.
+ - [x] Take the current implementation and possibly do tiny refactor.
+ - [x] Add illegal bins.
+ - [x] Add at_least kwarg.
 
 First we need simple testbanch that can run on one of the designs:
  - [x] Hardcode seed.
@@ -45,11 +52,10 @@ First we need simple testbanch that can run on one of the designs:
  - [x] Store coverage results into some json file with hardcoded path.
 
 Now make it more general:
- - [ ] Seed using ENV variable.
- - [ ] Find automatically clock and reset ports, use them if you find them.
- - [ ] Find ports direction via string parsing of module and possibly names from cocotb.
-       (you might be able to get module path from SV).
- - [ ] Automatically generate random stimuli just to the include ports.
+ - [x] Seed using ENV variable.
+ - [x] Find automatically clock and reset ports, use them if you find them.
+ - [x] Find ports direction via string parsing of module and possibly names from cocotb.
+ - [x] Automatically generate random stimuli just to the include ports.
  - [ ] Add small probability to reset during run (based on ENV variable - ON / OFF).
  - [ ] Add to results used ports for clock, reset and random stimuli generation.
 

@@ -1,7 +1,8 @@
-import json
 from pathlib import Path
 
 from cocotb.runner import get_runner
+
+from testbench import Coverage
 
 
 # ───────────────────────────────[ ⚙️  .  ⚙️ ]───────────────────────────────
@@ -18,10 +19,11 @@ def run() -> None:
                  always=False, clean=False,
                  build_args=['--coverage'])
     x = runner.test(hdl_toplevel=TOPLEVEL,
-                    test_module='testbench')
+                    test_module='testbench',
+                    extra_env={'TB_CODE': str(SOURCES[0])})
     print(f'Tests done, result ({type(x)}): {x}')
-    data = json.loads((ROOT / 'data.txt').read_text())
-    print(f'Final values:\n{'\n'.join(f'{x}: {y}' for x, y in data.items())}')
+    data = Coverage.load(ROOT / 'data.json')
+    data.print()
 
 
 def main() -> None:

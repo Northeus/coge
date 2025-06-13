@@ -134,9 +134,8 @@ def _parse_design(_design: _Design, folder: Path) -> Design:
 
 def load(dataset_file: Path) -> list[Design]:
     raw_json = json.loads(dataset_file.read_text())
-    _designs = [dacite.from_dict(data_class=_Design,
-                             data=entity,
-                             config=dacite.Config(cast=[tuple]))
+    config=dacite.Config(cast=[tuple])
+    _designs = [dacite.from_dict(_Design, entity, config)
                 for entity in raw_json]
     folder = dataset_file.resolve().parent
     return [_parse_design(_design, folder) for _design in _designs]
