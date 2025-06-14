@@ -31,6 +31,7 @@ RESET_N_NAMES = ('rstn', 'rst_n', 'rst_neg', 'resetn', 'reset_n', 'reset_neg')
 class Config:
     seed: int | None
     code: Path
+    coverage: Path
     result_path: Path
     time_limit: int = 1000
     reset_prob: float = 0.0
@@ -44,13 +45,16 @@ class Config:
 
         code = Path(os.environ['TB_CODE'])
         assert code.exists()
+        coverage = Path(os.environ['TB_COVERAGE'])
+        assert coverage.exists()
 
         reset_prob = float(os.environ.get('TB_RESER_PROB', '0'))
         time_limit = int(os.environ.get('TB_TIME_LIMIT', '1000'))
 
         result_path = Path(os.environ['TB_RESULT'])
 
-        return Config(seed, code, result_path, time_limit, reset_prob)
+        return Config(seed, code, coverage, result_path,
+                      time_limit, reset_prob)
 
 
 @dataclass(frozen=True)
@@ -312,10 +316,31 @@ async def test_module(dut: HierarchyObject) -> None:
 
     ...
     # TODO: remove this hardcoded coverage
-    reset_cp = coverpoint('RST')
-    normal_bins(reset_cp, (0, 1), at_least=1)
-    sequence(reset_cp, [0, 1, 0])
-    coverage = Coverage([reset_cp], [])
+    code = config.coverage.read_text()
+    print(code)
+    globals = {'list': list,
+               'range': range,
+               'tuple': tuple,
+               'coverpoint': coverpoint,
+               'sequence': sequence,
+               'normal_bin': normal_bin,
+               'normal_bins': normal_bins,
+               'illegal_bin': illegal_bin,
+               'ignore_bin': ignore_bin,
+               'cross': cross
+    }
+    locals = {}
+    try:
+        exec(code, globals, locals)
+    except Exception as e:
+        print(e)
+        # TODO: LOG FAIL
+        return
+    print(locals)
+    ...
+    coverpoints = [x for x in locals.values() if isinstance(x, Coverpoint)]
+    crosses = [x for x in locals.values() if isinstance(x, Cross)]
+    coverage = Coverage(coverpoints, crosses)
     ...
 
     should_reset_iter = map(lambda x: random.random() < x,

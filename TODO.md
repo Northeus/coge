@@ -30,14 +30,14 @@ Now make it more general:
  - [x] Add small probability to reset during run (based on ENV variable - ON / OFF).
 
 Now lets improve the testbench by automatic coverage:
- - [ ] Functional coverage will be stored in some other file with path in ENV.
- - [ ] Load that file and check for possible syntax check, store them in results file.
- - [ ] Compile code from that file and put it into the testbench.
- - [ ] Find generated coverage stuff using exec namespace and access generated stuff.
- - [ ] Sample all the covergroups at certain point in the program.
+ - [x] Functional coverage will be stored in some other file with path in ENV.
+ - [x] Load that file and check for possible syntax check, store them in results file.
+ - [x] Compile code from that file and put it into the testbench.
+ - [x] Find generated coverage stuff using exec namespace and access generated stuff.
+ - [x] Sample all the covergroups at certain point in the program.
 
 Create guardrails to minimize risk connected with running LLMs code:
- - [ ] Remove unsafe builtins, such as: import, open, ...
+ - [x] Remove unsafe builtins, such as: import, open, ...
  - [ ] Add timeout to the code coverage code runtime.
  - [ ] Limit number of created bins (use ENV variable).
  - [ ] Limit size of cross (based on input size) (use ENV variable).
