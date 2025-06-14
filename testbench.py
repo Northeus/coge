@@ -5,11 +5,13 @@ import json
 import os
 import random
 import re
+import signal
 from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
-from functools import partial
+from functools import partial, reduce
 from itertools import chain, cycle, product
+from operator import mul
 from pathlib import Path
 from typing import Literal
 
@@ -22,6 +24,11 @@ from cocotb.utils import get_sim_time
 
 # ───────────────────────────[ ⚙️  Test set-up  ⚙️ ]──────────────────────────
 
+MAX_SEQUENCE_SIZE = 8
+MAX_CROSS_SIZE = 100
+MAX_BINS_COUNT = 100
+MAX_SEQUENCE_COUNT = 10
+
 CLOCK_NAMES = ('clk', 'clock')
 RESET_NAMES = ('rst', 'reset')
 RESET_N_NAMES = ('rstn', 'rst_n', 'rst_neg', 'resetn', 'reset_n', 'reset_neg')
@@ -33,8 +40,9 @@ class Config:
     code: Path
     coverage: Path
     result_path: Path
-    time_limit: int = 1000
     reset_prob: float = 0.0
+    time_limit: int = 1000
+    coverage_time_limit: int = 5
 
     @classmethod
     def load_from_env(cls) -> Config:
@@ -53,8 +61,15 @@ class Config:
 
         result_path = Path(os.environ['TB_RESULT'])
 
-        return Config(seed, code, coverage, result_path,
-                      time_limit, reset_prob)
+        coverage_time_limit = int(os.environ.get('TB_COVERAGE_TIME', '5'))
+
+        return Config(seed=seed,
+                      code=code,
+                      coverage=coverage,
+                      result_path=result_path,
+                      reset_prob=reset_prob,
+                      time_limit=time_limit,
+                      coverage_time_limit=coverage_time_limit)
 
 
 @dataclass(frozen=True)
@@ -81,6 +96,51 @@ def _find_reset(ports: list[_Port]) -> _Port | None:
 def _find_reset_n(ports: list[_Port]) -> _Port | None:
     return _find_port(ports, RESET_N_NAMES)
 
+
+def _timeout_handler(_arg1, _arg2) -> None:
+    raise TimeoutError('Execution timed out!')
+
+
+@dataclass
+class _CoverageError:
+    cause: Literal['time', 'code', 'coverage size']
+    message: str = ''
+
+
+def _load_coverage(config: Config) -> Coverage | _CoverageError:
+    code = config.coverage.read_text()
+    globals = {'list': list,
+               'range': range,
+               'tuple': tuple,
+               'coverpoint': coverpoint,
+               'sequence': sequence,
+               'normal_bin': normal_bin,
+               'normal_bins': normal_bins,
+               'illegal_bin': illegal_bin,
+               'ignore_bin': ignore_bin,
+               'cross': cross
+    }
+    locals = {}
+
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    try:
+        signal.alarm(config.coverage_time_limit)
+        exec(code, globals, locals)
+        signal.alarm(0)
+    except TimeoutError as e:
+        return _CoverageError(
+            'time',
+            f'Execution time took more than {config.coverage_time_limit}s')
+    except _CoverageSizeError:
+        return _CoverageError('coverage size')
+    except Exception as e:
+        return _CoverageError('code', f'Exception: {e}')
+    finally:
+        signal.alarm(0)
+
+    coverpoints = [x for x in locals.values() if isinstance(x, Coverpoint)]
+    crosses = [x for x in locals.values() if isinstance(x, Cross)]
+    return Coverage(coverpoints, crosses)
 
 # ────────────────────────────[ ⚙️  Coverage  ⚙️ ]────────────────────────────
 
@@ -197,6 +257,10 @@ class Coverage:
                 print(f'   * Target {bins_str:>50} {hits:>10} hits')
 
 
+class _CoverageSizeError(Exception):
+    pass
+
+
 def coverpoint(port: str) -> Coverpoint:
     coverpoint = Coverpoint(port)
     return coverpoint
@@ -211,6 +275,12 @@ def _bin(coverpoint: Coverpoint,
               (values, values) if isinstance(values, int) else values,
               at_least=at_least)
     target.append(bin)
+
+    if max(len(coverpoint.bins),
+           len(coverpoint.ignore_bins),
+           len(coverpoint.illegal_bins)) > MAX_BINS_COUNT:
+        raise _CoverageSizeError
+
     return bin
 
 
@@ -252,10 +322,18 @@ def sequence(coverpoint: Coverpoint,
                    deque(maxlen=len(sequence)),
                    at_least=at_least)
     coverpoint.sequences.append(seq)
+
+    if (len(sequence) > MAX_SEQUENCE_SIZE
+        or len(coverpoint.sequences) > MAX_SEQUENCE_COUNT):
+        raise _CoverageSizeError
+
     return seq
 
 
 def cross(bin_groups: list[list[Bin]]) -> Cross:
+    if reduce(mul, map(len, bin_groups)) > MAX_CROSS_SIZE:
+        raise _CoverageSizeError
+
     return Cross(list(product(*bin_groups)))
 
 
@@ -266,7 +344,6 @@ def _find_ports(dut: HierarchyObject, code: Path) -> list[_Port]:
     objects =  filter(lambda x: isinstance(x, ModifiableObject),
                       map(partial(getattr, dut), names))
 
-    # TODO: mention this requirement of module ports in datasets README.md
     pattern = re.compile(
         r'\b(input|output|inout)\b'
         r'\s+(?:logic|wire|reg)?'
@@ -314,33 +391,14 @@ async def test_module(dut: HierarchyObject) -> None:
     reset = _find_reset(ports)
     reset_n = _find_reset_n(ports)
 
+    coverage = _load_coverage(config)
+
     ...
-    # TODO: remove this hardcoded coverage
-    code = config.coverage.read_text()
-    print(code)
-    globals = {'list': list,
-               'range': range,
-               'tuple': tuple,
-               'coverpoint': coverpoint,
-               'sequence': sequence,
-               'normal_bin': normal_bin,
-               'normal_bins': normal_bins,
-               'illegal_bin': illegal_bin,
-               'ignore_bin': ignore_bin,
-               'cross': cross
-    }
-    locals = {}
-    try:
-        exec(code, globals, locals)
-    except Exception as e:
-        print(e)
-        # TODO: LOG FAIL
-        return
-    print(locals)
-    ...
-    coverpoints = [x for x in locals.values() if isinstance(x, Coverpoint)]
-    crosses = [x for x in locals.values() if isinstance(x, Cross)]
-    coverage = Coverage(coverpoints, crosses)
+    if isinstance(coverage, _CoverageError):
+        # TODO: log to file
+        print(f'{coverage.cause}: {coverage.message}')
+        assert False
+    # TODO: check if all ports in coverage are present.
     ...
 
     should_reset_iter = map(lambda x: random.random() < x,

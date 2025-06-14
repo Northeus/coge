@@ -1,52 +1,14 @@
 # TODO
  - [ ] Improve dataset.
  - [ ] Add small chance to trigger reset during simulation (do not exclude it).
+ - [ ] Mention that code can run only on linux.
+ - [ ] Document limits for coverage size stored in testbench.py.
+ - [ ] Create testbench result file.
+ - [ ] Document code.
 
 ```
 # ───────────────────────────────[ ⚙️  .  ⚙️ ]───────────────────────────────
 ```
-
-## Implement testbench
-Keep all the code in the `testbench.py` file for now.
-
-Before we start, coverage must be implemented:
- - [x] Take the current implementation and possibly do tiny refactor.
- - [x] Add illegal bins.
- - [x] Add at_least kwarg.
-
-First we need simple testbanch that can run on one of the designs:
- - [x] Hardcode seed.
- - [x] Hardcode reset and clock hooks to the DUT.
- - [x] Generate random stimuli on hardcoded input ports of the design.
- - [x] Add some coverage (hardcoded) into the testbench.
- - [x] Create simple runner (hardcoded) in python and run code.
- - [x] Store coverage results into some json file with hardcoded path.
-
-Now make it more general:
- - [x] Seed using ENV variable.
- - [x] Find automatically clock and reset ports, use them if you find them.
- - [x] Find ports direction via string parsing of module and possibly names from cocotb.
- - [x] Automatically generate random stimuli just to the include ports.
- - [x] Add small probability to reset during run (based on ENV variable - ON / OFF).
-
-Now lets improve the testbench by automatic coverage:
- - [x] Functional coverage will be stored in some other file with path in ENV.
- - [x] Load that file and check for possible syntax check, store them in results file.
- - [x] Compile code from that file and put it into the testbench.
- - [x] Find generated coverage stuff using exec namespace and access generated stuff.
- - [x] Sample all the covergroups at certain point in the program.
-
-Create guardrails to minimize risk connected with running LLMs code:
- - [x] Remove unsafe builtins, such as: import, open, ...
- - [ ] Add timeout to the code coverage code runtime.
- - [ ] Limit number of created bins (use ENV variable).
- - [ ] Limit size of cross (based on input size) (use ENV variable).
- - [ ] Check for MemoryError.
-
-And the most importat, document it:
- - [ ] Testbench API (including coverage and all the public functions).
- - [ ] How to use testbench with examples.
- - [ ] How to use coverage with examples.
 
 ## Implement testbench runner
 Keep all the code in the `runner.py` file for now.

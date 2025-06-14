@@ -18,8 +18,7 @@ the `dataset.json` file that have following format:
         ]
     },
     ...
-]
-```
+]```
 
 Format of the requirements is:
 ```json
@@ -47,7 +46,21 @@ Format of the requirements is:
             "at_least": 5
         }
     ]
-}
-```
+}```
 
+All the SystemVerilog code should use the style, where direction of the ports
+is specified within the module statement, for example:
+```sv
+// Good.
+module OR(
+    input logic A,
+    input logic B,
+    output logic X
+);
 
+// Bad.
+module OR(
+    input logic A,
+    input logic B,
+    output logic X
+);```
