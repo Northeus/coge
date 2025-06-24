@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import dataclasses
 import random
 import json
@@ -210,10 +211,16 @@ async def test_random_stimuli(dut: HierarchyObject) -> None:
     # Start clock.
     await cocotb.start(generate_clock(dut, stop))
 
+
+    await dut.dpi.call_c_func("some.dat")
+
+
     # Reset DUT.
+    dut.COV.value = 0
     dut.RST.value = 0
     await Timer(Decimal(3), units='ns')
     dut.RST.value = 1
+    dut.COV.value = 1
     await Timer(Decimal(4), units='ns')
     dut.RST.value = 0
     await Timer(Decimal(3), units='ns')

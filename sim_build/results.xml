@@ -1,6 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1749926066" />
-    <testcase name="test_module" classname="testbench" file="/home/jan/git/coge/testbench.py" lineno="383" time="0.07879447937011719" sim_time_ns="1001.001" ratio_time="12703.948398441093" />
-  </testsuite>
-</testsuites>

@@ -10,7 +10,7 @@ the `dataset.json` file that have following format:
 ```json
 [
     {
-        "name": "(str) name of the design",
+        "name": "(str) unique name of the design",
         "design_file": "(str) path to the file containing design code",
         "description_file": "(str) path to the file containing design description",
         "requirements": [

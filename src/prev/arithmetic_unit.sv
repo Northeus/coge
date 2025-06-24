@@ -3,6 +3,8 @@ module arithmetic_unit (
     input logic RST,  // Reset signal (asynchronnous, positive active).
     input logic ACT,  // Activation signal (1 - start computation).
 
+    input logic COV,
+
     input logic [1:0]  OP_CODE,  // Operator selector (+, -, *, /).
     input logic [1:0]  MOVI,     // Second operand selector (REG_B, MEM, IMM, ?).
     input logic [31:0] REG_A,    // First operand.
@@ -13,6 +15,11 @@ module arithmetic_unit (
     output logic [31:0] DATA,       // Result of the operation iff DATA_VALID is 1.
     output logic        DATA_VALID  // Data valid flag, result is stored in DATA.
 );
+
+    import "DPI-C" function void write_cov(input string fname);
+    always_ff @(posedge COV) begin
+        write_cov("partial_cov.dat");
+    end
 
     typedef enum logic [1:0] {
         ADD = 2'b00,

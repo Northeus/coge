@@ -1,147 +1,158 @@
-from pathlib import Path
-
-from cocotb.runner import get_runner
-
-from testbench import Coverage
-
-
-# ───────────────────────────────[ ⚙️  .  ⚙️ ]───────────────────────────────
-
-SIM = 'verilator'
-ROOT = Path(__file__).resolve().parent
-SOURCES = [ROOT / 'dataset' / 'designs' / 'ALU.sv']
-TOPLEVEL = 'ALU'
-
-
-def run() -> None:
-    rslt_file = ROOT / 'data.json'
-    cov_file = ROOT / 'coverage.py'
-
-    runner = get_runner(SIM)
-    runner.build(sources=SOURCES, hdl_toplevel=TOPLEVEL,
-                 always=False, clean=False,
-                 build_args=['--coverage'])
-    x = runner.test(hdl_toplevel=TOPLEVEL,
-                    test_module='testbench',
-                    extra_env={'TB_CODE': str(SOURCES[0]),
-                               'TB_RESULT': str(rslt_file),
-                               'TB_COVERAGE': str(cov_file)})
-    print(f'Tests done, result ({type(x)}): {x}')
-    data = Coverage.load(rslt_file)
-    data.print()
-
-
-def main() -> None:
-    run()
-
-
-if __name__ == '__main__':
-    main()
-
-
-"""
-# TODO:
-# - [ ] Create demo that:
-#   * Create some coverage examples (multiple)
-#   * Generate some testbenches for DUT arithmetic_unit using that coverage.
-#   * Create reports.
+import argparse
 import json
 import subprocess
+import timeit
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 import dacite
-import matplotlib.pyplot as plt
 from cocotb.runner import get_runner
 
-from test_arithmetic_unit import Bin, Sequence, Coverpoint, Cross, Result
-from test_arithmetic_unit import print_coverage
+import generation
+import testbench
 
 
-SIM = 'verilator'
-ROOT = Path(__file__).resolve().parent
-CLEAN = False
-SOURCES = [ROOT / 'arithmetic_unit.sv']
-TOPLEVEL = 'arithmetic_unit'
+# ─────────────────────────────[ ⚙️  Config  ⚙️ ]─────────────────────────────
+
+# Project structure.
+ROOT_DIR = Path(__file__).resolve().parent
+TMP_DIR = ROOT_DIR / 'tmp'
+
+# Simulation.
+SIMULATOR = 'verilator'
 
 
-def run(*, transactions: int = 100) -> list[int]:
-    # Run tests.
-    runner = get_runner(SIM)
-    runner.build(sources=SOURCES, hdl_toplevel=TOPLEVEL,
-                 always=CLEAN, clean=CLEAN,
-                 build_args=['--coverage'])
+# ─────────────────────────────[ ⚙️  Runner  ⚙️ ]─────────────────────────────
 
-    x = runner.test(hdl_toplevel=TOPLEVEL,
-                    test_module='test_arithmetic_unit',
-                    extra_env={'TRANSACTIONS': str(transactions)})
-    print(f'Tests done, result ({type(x)}): {x}')
 
-    # Generate code coverage.
-    cmd = ('verilator_coverage --annotate logs '
-           'sim_build/coverage.dat --annotate-min 1 '
-           '--annotate-all')
-    subprocess.run(cmd.split(' '), check=True)
+@dataclass(frozen=True)
+class Result:
+    result: testbench.Result
+    code_coverage: list[int | None]
 
-    # Process code coverage.
+TestResult = Result | Literal['test failed', 'code coverage failed']
+
+
+def _load_line_code_coverage(file: Path) -> list[int | None] | None:
     def process_line(line: str) -> int | None:
         if line[0:1] not in ' %~+-':
             return None
         line = line[1:]
         hits, _, _ = line.partition(' ')
         return int(hits) if hits.isdecimal() else None
-    code_coverage_logs = (ROOT / 'logs' / 'arithmetic_unit.sv').read_text()
-    code_coverage_all= map(process_line, code_coverage_logs.splitlines())
-    code_coverage = [x for x in code_coverage_all if x is not None]
-    print('Code coverage:')
-    print(f'\tMin: {min(code_coverage)}')
-    print(f'\tMax: {max(code_coverage)}')
-    print(f'\tAvg: {sum(code_coverage) / len(code_coverage)}')
-    return code_coverage
+
+    try:
+        code_coverage_log = file.read_text()
+        return [process_line(x) for x in code_coverage_log.splitlines()))
+    except Exception:
+        return None
 
 
-def load_func_cov() -> Result:
-    func_dict = json.loads((ROOT / 'func.json').read_text())
-    return dacite.from_dict(data_class=Result,
-                            data=func_dict,
-                            config=dacite.Config(cast=[tuple]))
+def run(dut: Path,
+        top_level: str,
+        coverage_snippets: list[str],
+        *,
+        seed: int | None = None,
+        reset_probability: float | None,
+        clock_limit: int = 1000,
+        clock_steps: int = 1
+        ) -> list[TestResult]:
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+    date = datetime.now().now().strftime('%Y-%m-%d_%H-%S-%f')
+    test_dir = TMP_DIR / f'test_{top_level}_{date}'
+    test_dir.mkdir(parents=True, exist_ok=False)
+    build_dir = test_dir / 'build'
+
+    runner = get_runner(SIMULATOR)
+    runner.build(sources=[dut],
+                 hdl_toplevel=top_level,
+                 build_dir=build_dir,
+                 always=True,
+                 clean=True,
+                 build_args=['--coverage'])
+
+    env = {
+        'TB_CODE': str(dut),
+        'TB_RESET_PROB': str(reset_probability or 0.0),
+    }
+    if seed is not None:
+        env['TB_SEED'] = str(seed)
+    max_i = len(str(len(coverage_snippets)))
+
+    results = []
+    for i, snippet in enumerate(coverage_snippets):
+        step = clock_limit // clock_steps
+        for limit in range(step, clock_limit + 1, step):
+            work_dir = test_dir / f'snippet_{str(i).zfill(max_i)}_{limit}'
+            work_dir.mkdir(parents=True)
+            cov_file = work_dir / 'coverage.py'
+            cov_file.write_text(snippet)
+            result_file = work_dir / 'result.json'
+
+            try:
+                runner.test(hdl_toplevel=top_level,
+                            test_module='testbench',
+                            build_dir=build_dir,
+                            test_dir=work_dir,
+                            extra_env=_env)
+            except Exception:
+                results.append('test failed')
+                continue
+
+            coverage_cmd = ['verilator_coverage', f'{build_dir}/coverage.dat',
+                            '--annotate-min', '1', '--annotate-all']
+
+            if subprocess.run(coverage_cmd, check=True).returncode != 0:
+                results.append('code coverage failed')
+                continue
+
+            code_coverage = _load_line_code_coverage(work_dir / 'logs' / dut.name)
+            result = testbench.Result.load(result_file)
+
+            if code_coverage is None:
+                results.append('code coverage failed')
+                continue
+
+            results.append(Result(result, code_coverage))
+
+    assert len(results) == len(coverage_snippets)
+    return results
 
 
-def compute_func_cov(data: Result) -> float:
-    total = 0
-    covered = 0
+# ───────────────────────────────[ ⚙️  Run  ⚙️ ]───────────────────────────────
 
-    for coverpoint in data.coverpoints:
-        total += len(coverpoint.bins)
-        total += len(coverpoint.sequences)
-        covered += sum(x.hits > 0 for x in coverpoint.bins)
-        covered += sum(x.hits > 0 for x in coverpoint.sequences)
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('coverage_file', type=Path)
+    parser.add_argument('-S', '--seed', type=int)
+    parser.add_argument('-r', '--reset_probability', type=float, default=0.0)
+    parser.add_argument('-c', '--clock_limit', type=int, default=1000)
+    parser.add_argument('-t', '--clock_steps', type=int, default=1)
 
-    for cross in data.crosses:
-        total += len(cross.hits)
-        covered += sum(x > 0 for x in cross.hits)
+    args = parser.parse_args()
+    print('Executing testbench with following params')
+    print(f' Coverage    = {args.coverage_file}')
+    print(f' Seed        = {args.seed if args.seed is not None else 'None'}')
+    print(f' Reset prob. = {args.reset_probability}')
+    print(f' Clock limit = {args.clock_limit}')
+    print(f' Clock steps = {args.clock_steps}')
 
-    return covered / total
+    coverage_file = args.coverage_file
+    coverage_data = generation.DesignCoverage.load_data(coverage_file)
 
+    for design_coverage in coverage_data:
+        result = run(design_coverage.design,
+                     design_coverage.top,
+                     design_coverage.snippets,
+                     seed=args.seed,
+                     reset_probability=args.reset_probability,
+                     clock_limit=args.clock_limit,
+                     clock_steps=args.clock_steps)
 
-def multiple_runs():
-    transactions_list = list(range(50))
-    code_cov = []
-    func_cov = []
-    for transactions in transactions_list:
-        code_cov_data = run(transactions=transactions)
-        code_cov.append(sum(x > 0 for x in code_cov_data) / len(code_cov_data))
-        func_cov_data = load_func_cov()
-        func_cov.append(compute_func_cov(func_cov_data))
-
-    plt.plot(transactions_list, code_cov, label='code')
-    plt.plot(transactions_list, func_cov, label='func')
-    plt.xlabel('Transactions')
-    plt.ylabel('Coverage')
-    plt.legend()
-    plt.show()
+    ...
 
 
 if __name__ == '__main__':
-    # run(transactions=1000000)
-    multiple_runs()
-"""
+    main()

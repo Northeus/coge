@@ -13,7 +13,7 @@ from functools import partial, reduce
 from itertools import chain, cycle, product
 from operator import mul
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 import cocotb
 import dacite
@@ -22,7 +22,160 @@ from cocotb.triggers import Timer, RisingEdge
 from cocotb.utils import get_sim_time
 
 
+# WIP
+# WIP
+# WIP
+# WIP
+# WIP
+
+
+@dataclass
+class Ports:
+    sizes: list[tuple[str, int]]
+    clock_port: str | None
+    reset_port: str | None
+    reset_n_port: str | None
+    stimulated_ports: list[str]
+
+
+@dataclass
+class Result:
+    ports: Ports
+    coverage: Coverage | CoverageError
+
+    def save(self, data_file: Path) -> None:
+        def deque_default(obj: object) -> object:
+            if isinstance(obj, deque):
+                return list(obj)
+            raise TypeError
+
+        data_file.write_text(json.dumps(dataclasses.asdict(self),
+                                        default=deque_default))
+
+    @classmethod
+    def load(cls, data_file: Path) -> Result:
+        data = json.loads(data_file.read_text())
+        config = dacite.Config(cast=[tuple, deque])
+        return dacite.from_dict(Result, data, config)
+
+
+def _find_ports(dut: HierarchyObject, code: Path) -> list[_Port]:
+    names = filter(lambda x: not x.startswith('_'), dir(dut))
+    objects =  filter(lambda x: isinstance(x, ModifiableObject),
+                      map(partial(getattr, dut), names))
+
+    pattern = re.compile(
+        r'\b(input|output|inout)\b'
+        r'\s+(?:logic|wire|reg)?'
+        r'(?:\s*\[\s*[^\]]*\s*\])?'
+        r'\s+(\w+)',
+        re.IGNORECASE)
+    matches = pattern.findall(code.read_text())
+    directions = {port: direction for direction, port in matches}
+
+    return [_Port(x._name, int(x.__len__()), directions[x._name], x)
+            for x in objects
+            if x._name in directions]
+
+
+async def _generate_clock(clock: _Port | None) -> None:
+    if clock is None:
+        return
+
+    for value in cycle((0, 1)):
+        clock.handle.value = value
+        await Timer(Decimal(1), units='ns')
+
+
+async def _next_clock_tick(clock: _Port | None) -> None:
+    if clock is not None:
+        await RisingEdge(clock.handle)
+    else:
+        await Timer(Decimal(1), units='ns')
+
+
+def _set_value(signal: _Port | None, value: int) -> None:
+    if signal is not None:
+        signal.handle.value = value
+
+
+@cocotb.test
+async def test_module(dut: HierarchyObject) -> None:
+    config = Config.load_from_env()
+    random.seed(config.seed)
+
+    ports = _find_ports(dut, config.code)
+    clock = _find_clock(ports)
+    await cocotb.start(_generate_clock(clock))
+
+    reset = _find_reset(ports)
+    reset_n = _find_reset_n(ports)
+
+    clock_port_name = clock and clock.name
+    reset_port_name = reset and reset.name
+    reset_n_port_name = reset_n and reset_n.name
+    input_ports = [x for x in ports
+                   if (x.direction == 'input'
+                       and x.name not in {clock_port_name,
+                                          reset_port_name,
+                                          reset_n_port_name})]
+
+    ports_info = Ports([(port.name, port.width) for port in ports],
+                       clock_port_name,
+                       reset_port_name,
+                       reset_n_port_name,
+                       [port.name for port in input_ports])
+
+    port_width = _make_port_width({port.name: port for port in ports})
+    coverage = _load_coverage(config, port_width)
+    if isinstance(coverage, CoverageError):
+        result = Result(ports_info, coverage)
+        result.save(config.result_path)
+        return
+
+    should_reset_iter = map(lambda x: random.random() < x,
+                            cycle((config.reset_prob,)))
+    should_reset_iter = chain((False, True, False), should_reset_iter)
+
+    while get_sim_time(units='ns') < config.time_limit:
+        should_reset = next(should_reset_iter)
+        _set_value(reset, int(should_reset))
+        _set_value(reset_n, not int(should_reset))
+
+        for port in input_ports:
+            port.handle.value = random.randint(0, 2**port.width - 1)
+
+        values = {port.name: int(port.handle.value) for port in ports}
+        coverage.sample_all(values)
+        await _next_clock_tick(clock)
+
+    result = Result(ports_info, coverage)
+    result.save(config.result_path)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ───────────────────────────[ ⚙️  Test set-up  ⚙️ ]──────────────────────────
+# TODO: remove coverage clock limit
 
 MAX_SEQUENCE_SIZE = 8
 MAX_CROSS_SIZE = 100
@@ -102,12 +255,14 @@ def _timeout_handler(_arg1, _arg2) -> None:
 
 
 @dataclass
-class _CoverageError:
+class CoverageError:
     cause: Literal['time', 'code', 'coverage size']
     message: str = ''
 
 
-def _load_coverage(config: Config) -> Coverage | _CoverageError:
+def _load_coverage(config: Config,
+                   port_width: Callable[[str], int]
+                   ) -> Coverage | CoverageError:
     code = config.coverage.read_text()
     globals = {'list': list,
                'range': range,
@@ -118,7 +273,8 @@ def _load_coverage(config: Config) -> Coverage | _CoverageError:
                'normal_bins': normal_bins,
                'illegal_bin': illegal_bin,
                'ignore_bin': ignore_bin,
-               'cross': cross
+               'cross': cross,
+               'port_width': port_width
     }
     locals = {}
 
@@ -128,13 +284,13 @@ def _load_coverage(config: Config) -> Coverage | _CoverageError:
         exec(code, globals, locals)
         signal.alarm(0)
     except TimeoutError as e:
-        return _CoverageError(
+        return CoverageError(
             'time',
             f'Execution time took more than {config.coverage_time_limit}s')
     except _CoverageSizeError:
-        return _CoverageError('coverage size')
+        return CoverageError('coverage size')
     except Exception as e:
-        return _CoverageError('code', f'Exception: {e}')
+        return CoverageError('code', f'Exception: {e}')
     finally:
         signal.alarm(0)
 
@@ -218,22 +374,6 @@ class Coverage:
 
         for cross in self.crosses:
             cross.sample_all(bin_hits)
-
-
-    def save(self, data_file: Path) -> None:
-        def deque_default(obj: object) -> object:
-            if isinstance(obj, deque):
-                return list(obj)
-            raise TypeError
-
-        data_file.write_text(json.dumps(dataclasses.asdict(self),
-                                        default=deque_default))
-
-    @classmethod
-    def load(cls, data_file: Path) -> Coverage:
-        data = json.loads(data_file.read_text())
-        config = dacite.Config(cast=[tuple, deque])
-        return dacite.from_dict(Coverage, data, config)
 
     def print(self) -> None:
         for coverpoint in self.coverpoints:
@@ -337,7 +477,44 @@ def cross(bin_groups: list[list[Bin]]) -> Cross:
     return Cross(list(product(*bin_groups)))
 
 
+def _make_port_width(ports: dict[str, _Port]) -> Callable[[str], int]:
+    def port_size(name: str) -> int:
+        return ports[name].width
+    return port_size
+
+
 # ──────────────────────────────[ ⚙️  Test  ⚙️ ]──────────────────────────────
+
+
+@dataclass
+class Ports:
+    sizes: list[tuple[str, int]]
+    clock_port: str | None
+    reset_port: str | None
+    reset_n_port: str | None
+    stimulated_ports: list[str]
+
+
+@dataclass
+class Result:
+    ports: Ports
+    coverage: Coverage | CoverageError
+
+    def save(self, data_file: Path) -> None:
+        def deque_default(obj: object) -> object:
+            if isinstance(obj, deque):
+                return list(obj)
+            raise TypeError
+
+        data_file.write_text(json.dumps(dataclasses.asdict(self),
+                                        default=deque_default))
+
+    @classmethod
+    def load(cls, data_file: Path) -> Result:
+        data = json.loads(data_file.read_text())
+        config = dacite.Config(cast=[tuple, deque])
+        return dacite.from_dict(Result, data, config)
+
 
 def _find_ports(dut: HierarchyObject, code: Path) -> list[_Port]:
     names = filter(lambda x: not x.startswith('_'), dir(dut))
@@ -391,24 +568,31 @@ async def test_module(dut: HierarchyObject) -> None:
     reset = _find_reset(ports)
     reset_n = _find_reset_n(ports)
 
-    coverage = _load_coverage(config)
+    clock_port_name = clock and clock.name
+    reset_port_name = reset and reset.name
+    reset_n_port_name = reset_n and reset_n.name
+    input_ports = [x for x in ports
+                   if (x.direction == 'input'
+                       and x.name not in {clock_port_name,
+                                          reset_port_name,
+                                          reset_n_port_name})]
 
-    ...
-    if isinstance(coverage, _CoverageError):
-        # TODO: log to file
-        print(f'{coverage.cause}: {coverage.message}')
-        assert False
-    # TODO: check if all ports in coverage are present.
-    ...
+    ports_info = Ports([(port.name, port.width) for port in ports],
+                       clock_port_name,
+                       reset_port_name,
+                       reset_n_port_name,
+                       [port.name for port in input_ports])
+
+    port_width = _make_port_width({port.name: port for port in ports})
+    coverage = _load_coverage(config, port_width)
+    if isinstance(coverage, CoverageError):
+        result = Result(ports_info, coverage)
+        result.save(config.result_path)
+        return
 
     should_reset_iter = map(lambda x: random.random() < x,
                             cycle((config.reset_prob,)))
     should_reset_iter = chain((False, True, False), should_reset_iter)
-
-    ignored_ports = {reset and reset.name, reset_n and reset_n.name}
-    input_ports = filter(
-        lambda x: x.direction == 'input' and x.name not in ignored_ports,
-        ports)
 
     while get_sim_time(units='ns') < config.time_limit:
         should_reset = next(should_reset_iter)
@@ -422,4 +606,5 @@ async def test_module(dut: HierarchyObject) -> None:
         coverage.sample_all(values)
         await _next_clock_tick(clock)
 
-    coverage.save(config.result_path)
+    result = Result(ports_info, coverage)
+    result.save(config.result_path)

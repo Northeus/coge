@@ -17,7 +17,7 @@ from test_arithmetic_unit import print_coverage
 
 SIM = 'verilator'
 ROOT = Path(__file__).resolve().parent
-CLEAN = False
+CLEAN = True
 SOURCES = [ROOT / 'arithmetic_unit.sv']
 TOPLEVEL = 'arithmetic_unit'
 
@@ -27,13 +27,14 @@ def run(*, transactions: int = 100) -> list[int]:
     runner = get_runner(SIM)
     runner.build(sources=SOURCES, hdl_toplevel=TOPLEVEL,
                  always=CLEAN, clean=CLEAN,
-                 build_args=['--coverage'])
+                 build_args=['--coverage', "-LDFLAGS", "-L/home/jan/git/coge/src/prev -ldpi"])
 
     x = runner.test(hdl_toplevel=TOPLEVEL,
                     test_module='test_arithmetic_unit',
                     extra_env={'TRANSACTIONS': str(transactions)})
-    print(f'Tests done, result ({type(x)}): {x}')
 
+    return []
+    """
     # Generate code coverage.
     cmd = ('verilator_coverage --annotate logs '
            'sim_build/coverage.dat --annotate-min 1 '
@@ -55,6 +56,7 @@ def run(*, transactions: int = 100) -> list[int]:
     print(f'\tMax: {max(code_coverage)}')
     print(f'\tAvg: {sum(code_coverage) / len(code_coverage)}')
     return code_coverage
+    """
 
 
 def load_func_cov() -> Result:
@@ -100,5 +102,5 @@ def multiple_runs():
 
 
 if __name__ == '__main__':
-    # run(transactions=1000000)
-    multiple_runs()
+    run(transactions=1000)
+    # multiple_runs()

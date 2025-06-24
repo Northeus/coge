@@ -1,0 +1,1 @@
+{"ports": {"sizes": [["ACT", 1], ["CLK", 1], ["DATA", 32], ["IMM", 32], ["MEM", 32], ["MOVI", 2], ["OP", 4], ["RDY", 1], ["REG_A", 32], ["REG_B", 32], ["RST", 1], ["VLD", 1]], "clock_port": "CLK", "reset_port": "RST", "reset_n_port": null, "stimulated_ports": ["ACT", "IMM", "MEM", "MOVI", "OP", "REG_A", "REG_B"]}, "coverage": {"coverpoints": [], "crosses": []}}
