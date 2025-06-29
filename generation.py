@@ -2,16 +2,21 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import io
 import json
 import logging
 import re
+import tempfile
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
+from typing import Literal
 
 import dacite
 from alive_progress import alive_it
+from mypy import api
 from ollama import chat
+from pylint import lint
+from pylint.reporters import text
 
 import dataset
 
@@ -88,8 +93,10 @@ def cross(bin_groups: list[list[Bin]]) -> Cross:
     combinations of bins produced by a cartesian product
     on the list of lists of bins. Example of usage:
     ```python
-    op_bins = normal_bins(\'OP\', (0, 7))
-    zero_bin = normal_bin(\'REG_A\', 1)
+    op = coverpoint('OP')
+    op_bins = normal_bins(op, (0, 7))
+    reg_a = coverpoint('REG_A')
+    zero_bin = normal_bin(reg_a, 1)
     op_x_zero = cross([op_bins, [zero_bin]])
     ```
     \"\"\"
@@ -107,46 +114,118 @@ Please ensure all functional coverage objects returned \
 by the API are stored in variables to be used later! \
 Provide just the required code!
 
-Example of the conversation:
-User: Ensure all values of OP port are checked
+Examples of the conversation:
+User: Ensure all values of OP port are checked, furthermore check that all values OP were checked against one fromt the first 3 values of SEL.
 Assistant: ```python
+from coverage import *
+
+op = coverpoint('OP')
 max_op = 2 ** port_width('OP') - 1
-op_bins = normal_bins('OP', (0, max_op))
+op_bins = normal_bins(op, (0, max_op))
+
+sel = coverpoint('SEL')
+sel_bin = normal_bin(sel, (0, 2))
+
+op_sel_cross = cross([op_bins, [sel_bin]])
+```
+
+User: Checks the transition 0 > 1 > 3 > 2 on DATA signal.
+Assistant: ```python
+from coverage import *
+
+data = coverpoint('DATA')
+seq = sequence(data, [0, 1, 3, 2])
 ```"""
-
-TASK_PROMPT_TEMPLATE = """Description of the module:
-#[DESCRIPTION]
-
-The requirement is:
-#[REQUIREMENT]"""
 
 
 # ───────────────────────────[ ⚙️  Generation  ⚙️ ]───────────────────────────
 
-def generate_coverage(model: str, description: str, requirement: str) -> str:
-    prompt = (TASK_PROMPT_TEMPLATE.replace('#[DESCRIPTION]', description)
-              .replace('#[REQUIREMENT]', requirement))
-    response = chat(model=model,
-                    messages=[{'role': 'system', 'content': SYSTEM_PROMPT},
-                              {'role': 'user', 'content': prompt}])
-
-    message = response.message.content
-    assert message is not None
-
+def _extract_code(message: str) -> str | None:
     pattern = r'```(?:\w+\n)(.*?)```'
     snippets = re.findall(pattern, message, re.DOTALL)
-    assert len(snippets) > 0
+
+    if len(snippets) == 0:
+        return None
     if len(snippets) > 1:
         logger = logging.getLogger(__name__)
         logger.warning(f'Multiple snippets found:\n{message}')
+
     return snippets[-1]
+
+
+def _check_code(code: str) -> None | str:
+    with tempfile.NamedTemporaryFile(mode='w', dir='./', suffix='.py') as tmp:
+        logs = ''
+        tmp.write(code)
+        tmp.flush()
+
+        buffer = io.StringIO()
+        reporter = text.TextReporter(buffer)
+        lint.Run([tmp.name, '--errors-only'], reporter=reporter, exit=False)
+        if (pylint_log := buffer.getvalue()) != '':
+            logs += f'Pylint logs:\n{pylint_log}'
+
+        mypy_log_1, mypy_log_2, status = api.run([tmp.name,
+                                                  '--follow-imports=silent'])
+        if status != 0:
+            mypy_log = mypy_log_1 + '\n' + mypy_log_2
+            logs += ('' if logs == '' else '\n') + f'Mypy logs:\n{mypy_log}'
+
+        return None if logs == '' else logs
+
+
+@dataclass(frozen=True)
+class Message:
+    role: Literal['system', 'assistant', 'user']
+    content: str
+
+
+@dataclass(frozen=True)
+class GeneratedCoverage:
+    code: str | None
+    messages: list[Message]
+    status: Literal['ok', 'no code', 'invalid code'] = 'ok'
+
+
+def generate_coverage(model: str, requirement: str) -> GeneratedCoverage:
+    retries = 3
+    messages = [
+        Message('system', SYSTEM_PROMPT),
+        Message('user', requirement)
+    ]
+
+    code = None
+    status: Literal['ok', 'no code', 'invalid code'] = 'ok'
+    for _ in range(1 + retries):
+        response = chat(model=model,
+                        messages=list(map(dataclasses.asdict, messages)))
+        message = response.message.content
+        assert message is not None
+        messages.append(Message('assistant', message))
+
+        code = _extract_code(message)
+        if code is None:
+            status = 'no code'
+            messages.append(Message('user',
+                                     'Please provide the code in ```py...```'))
+            continue
+
+        errors = _check_code(code)
+        if errors is not None:
+            status = 'invalid code'
+            messages.append(Message('user', errors))
+            continue
+
+        break
+
+    return GeneratedCoverage(code, messages, status)
 
 
 @dataclass
 class DesignCoverage:
     design: Path
     top: str
-    snippets: list[str]
+    coverage: list[GeneratedCoverage]
 
     @classmethod
     def load_data(cls, data_file: Path) -> list[DesignCoverage]:
@@ -157,16 +236,13 @@ class DesignCoverage:
 
 def generate(dataset_file: Path, model: str) -> list[DesignCoverage]:
     data = dataset.load(dataset_file)
-    coverage = {}
-    for design, requirement in alive_it([(d, r)
-                                         for d in data
-                                         for r in d.requirements]):
-        code = generate_coverage(model,
-                                 design.description,
-                                 requirement.description)
-        coverage.setdefault(id(design), []).append(code)
+    coverages: dict[int, list[GeneratedCoverage]] = {}
+    designs_requirements = [(d, r) for d in data for r in d.requirements]
+    for design, requirement in alive_it(designs_requirements):
+        coverage = generate_coverage(model, requirement.description)
+        coverages.setdefault(id(design), []).append(coverage)
 
-    return [DesignCoverage(d.design, d.name, coverage[id(d)]) for d in data]
+    return [DesignCoverage(d.design, d.name, coverages[id(d)]) for d in data]
 
 
 def main() -> None:

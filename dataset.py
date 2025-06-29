@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import shorten
+from typing import Literal
 
 import dacite
 
@@ -27,6 +28,7 @@ class _Coverpoint:
     sequence: list[int] | None = None
     cross: list[_CrossEntry] | None = None
     at_least: int | None = None
+    bin_type: Literal['illegal', 'normal', 'ignore'] | None = None
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,6 @@ class _Requirement:
 @dataclass(frozen=True)
 class _Design:
     name: str
-    description_file: str
     design_file: str
     requirements: list[_Requirement]
 
@@ -50,6 +51,7 @@ class CoverValue:
     port: str
     value_range: tuple[int, int]
     at_least: int = 1
+    bin_type: Literal['illegal', 'ignore', 'normal'] = 'normal'
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,7 @@ class CoverValues:
     port: str
     values: list[int]
     at_least: int = 1
+    bin_type: Literal['illegal', 'ignore', 'normal'] = 'normal'
 
 
 @dataclass(frozen=True)
@@ -83,7 +86,6 @@ class Requirement:
 @dataclass(frozen=True)
 class Design:
     name: str
-    description: str
     design: Path
     requirements: list[Requirement]
 
@@ -108,10 +110,12 @@ def _parse_coverpoint(_cp: _Coverpoint) -> Coverpoint:
 
     if _cp.value is not None:
         assert _cp.port is not None
-        return CoverValue(_cp.port, _cp.value, _cp.at_least or 1)
+        bin_type = _cp.bin_type or 'normal'
+        return CoverValue(_cp.port, _cp.value, _cp.at_least or 1, bin_type)
     if _cp.values is not None:
         assert _cp.port is not None
-        return CoverValues(_cp.port, _cp.values, _cp.at_least or 1)
+        bin_type = _cp.bin_type or 'normal'
+        return CoverValues(_cp.port, _cp.values, _cp.at_least or 1, bin_type)
     if _cp.sequence is not None:
         assert _cp.port is not None
         return CoverSequence(_cp.port, _cp.sequence, _cp.at_least or 1)
@@ -123,13 +127,12 @@ def _parse_coverpoint(_cp: _Coverpoint) -> Coverpoint:
 
 
 def _parse_design(_design: _Design, folder: Path) -> Design:
-    description = (folder / _design.description_file).read_text()
     code_file = folder / _design.design_file
     requirements = [Requirement(req.description,
                                 list(map(_parse_coverpoint, req.coverpoints)))
                     for req in _design.requirements]
     assert code_file.exists()
-    return Design(_design.name, description, code_file, requirements)
+    return Design(_design.name, code_file, requirements)
 
 
 def load(dataset_file: Path) -> list[Design]:
@@ -165,7 +168,6 @@ def main() -> None:
 
     for design in dataset:
         print(f'Design {design.name}:')
-        print(f'  "{cut(design.description)}"')
         print(f'  at "{design.design}"')
 
         if design.requirements:

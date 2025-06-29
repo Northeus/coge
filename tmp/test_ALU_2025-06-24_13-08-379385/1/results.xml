@@ -1,8 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1750762818" />
-    <testcase name="test_module" classname="testbench" file="/home/jan/git/coge/testbench.py" lineno="407" time="0.00015854835510253906" sim_time_ns="0.001" ratio_time="6.307224060150376">
-      <failure message="Test failed with RANDOM_SEED=1750762818" />
-    </testcase>
-  </testsuite>
-</testsuites>

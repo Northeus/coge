@@ -12,8 +12,15 @@ module ALU(
 
     output logic[31:0] DATA,
     output logic       RDY,
-    output logic       VLD
+    output logic       VLD,
+
+    input logic COVERAGE_CAPTURE   // ignore coverage
 );
+
+    import "DPI-C" function void write_cov();       // ignore coverage
+    always_ff @(posedge COVERAGE_CAPTURE) begin    // ignore coverage
+        write_cov();                                // ignore coverage
+    end                                             // ignore coverage
 
     typedef enum logic [1:0] {
         INIT,
@@ -33,7 +40,6 @@ module ALU(
     logic       mult_req;
 
     assign operand_A = REG_A;
-    assign mult_req  = OP == 4'b0010;
 
     assign VLD = (state_curr != INIT) & ~RST;
     assign RDY = state_curr == INIT;
@@ -49,12 +55,12 @@ module ALU(
 
     always_comb begin
         norm_res = 32'b0;
-        mult_res = 64'b0;
+        mult_req = 0;
         if (RDY) begin
             case (OP)
                 4'b0000: norm_res = operand_A + operand_B;            // add
                 4'b0001: norm_res = operand_A - operand_B;            // sub
-                4'b0010: mult_res = operand_A * operand_B;            // mul
+                4'b0010: mult_req = 1;                                // mul
                 4'b0011: norm_res = {1'b0, operand_B[31:1]};          // srl
                 4'b0100: norm_res = {operand_B[30:0], 1'b0};          // sll
                 4'b0101: norm_res = {operand_B[0], operand_B[31:1]};  // ror
@@ -68,18 +74,20 @@ module ALU(
                 4'b1101: norm_res = ~(operand_A ^ operand_B);         // xnor
                 4'b1110: norm_res = operand_B + 1;                    // inc
                 4'b1111: norm_res = operand_B - 1;                    // dec
-                default: norm_res = '0;
             endcase
         end
     end
 
     always_comb begin
         case (state_curr)
-            INIT: case ({ACT, mult_req})
-                    2'b10:   state_next = FIRST_STAGE;
-                    2'b11:   state_next = MUL_FIRST_STAGE;
-                    default: state_next = INIT;
-            endcase
+            INIT:
+                if (ACT) begin
+                    if (mult_req)
+                        state_next = MUL_FIRST_STAGE;
+                    else
+                        state_next = FIRST_STAGE;
+                end else
+                     state_next = INIT;
             FIRST_STAGE:      state_next = INIT;
             MUL_FIRST_STAGE:  state_next = MUL_SECOND_STAGE;
             MUL_SECOND_STAGE: state_next = INIT;
@@ -89,8 +97,12 @@ module ALU(
     always_ff @(posedge CLK) begin
         if (RST) begin
             state_curr  <= INIT;
-        end else
+        end else begin
             state_curr <= state_next;
+
+            if (state_next == MUL_FIRST_STAGE)
+                mult_res <= operand_A * operand_B;
+        end
     end
 
     always_comb begin

@@ -28,6 +28,7 @@ Format of the requirements is:
         {
             "port": "(str) name of the port, not used for 'cross'"
 
+
             /* One of the following: */
             "value": "([int, int]) range where value must be (including both ends)",
             "values": "(list[int]) list of all values that must occure on the port",
@@ -36,9 +37,13 @@ Format of the requirements is:
                 {
                     /* Any value or values coverpoint without at_least field. */
                 }
+
             ]
 
             "at_least": "(int?) optional value telling required number of coverpoint hits"
+
+            /* If value or values was used, bin_type can be optionally added. */
+            "bin_type": "('normal', 'illegal', or 'ignore') By default, field is normal"
         },
         {
             "type": "sequence",
@@ -52,13 +57,6 @@ All the SystemVerilog code should use the style, where direction of the ports
 is specified within the module statement, for example:
 ```sv
 // Good.
-module OR(
-    input logic A,
-    input logic B,
-    output logic X
-);
-
-// Bad.
 module OR(
     input logic A,
     input logic B,
