@@ -1,14 +1,27 @@
+from __future__ import annotations
+
+import argparse
+import dataclasses
 import io
+import json
+import logging
 import re
 import tempfile
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
+import dacite
+from alive_progress import alive_it
 from mypy import api
 from ollama import chat
 from pylint import lint
 from pylint.reporters import text
 
+import dataset
+
+
+# ─────────────────────────────[ ⚙️  Prompts  ⚙️ ]─────────────────────────────
 
 SYSTEM_PROMPT = """You are a verification engineer whose goal is to \
 implement a functional coverage code snippet using the provided API \
@@ -99,7 +112,8 @@ def port_width(name: str) -> int:
 
 Please ensure all functional coverage objects returned \
 by the API are stored in variables to be used later! \
-Provide just the required code!
+Provide just the required code! All the above mentioned \
+functions are implemented in the module `coverage`.
 
 Examples of the conversation:
 User: Ensure all values of OP port are checked, furthermore check that all values OP were checked against one fromt the first 3 values of SEL.
@@ -125,25 +139,19 @@ seq = sequence(data, [0, 1, 3, 2])
 ```"""
 
 
-GenerationStatus = Literal['ok', 'no code', 'invalid code']
+# ───────────────────────────[ ⚙️  Generation  ⚙️ ]───────────────────────────
 
-
-@dataclass(frozen=True)
-class Message:
-    role: Literal['system', 'assistant', 'user']
-    content: str
-
-
-@dataclass(frozen=True)
-class GeneratedCoverage:
-    chat: list[Message]
-    code: list[tuple[GenerationStatus, str]]
-
-
-def _extract_code_snippets(message: str) -> list[str]:
+def _extract_code(message: str) -> str | None:
     pattern = r'```(?:\w+\n)(.*?)```'
     snippets = re.findall(pattern, message, re.DOTALL)
-    return snippets
+
+    if len(snippets) == 0:
+        return None
+    if len(snippets) > 1:
+        logger = logging.getLogger(__name__)
+        logger.warning(f'Multiple snippets found:\n{message}')
+
+    return snippets[-1]
 
 
 def _check_code(code: str) -> None | str:
@@ -167,36 +175,96 @@ def _check_code(code: str) -> None | str:
         return None if logs == '' else logs
 
 
-def generate(requirement: str, model: str) -> GeneratedCoverage:
-    results: list[tuple[GenerationStatus, str]] = []
+@dataclass(frozen=True)
+class Message:
+    role: Literal['system', 'assistant', 'user']
+    content: str
+
+
+@dataclass(frozen=True)
+class GeneratedCoverage:
+    code: str | None
+    messages: list[Message]
+    status: Literal['ok', 'no code', 'invalid code'] = 'ok'
+
+
+def generate_coverage(model: str, requirement: str) -> GeneratedCoverage:
+    retries = 3
     messages = [
         Message('system', SYSTEM_PROMPT),
         Message('user', requirement)
     ]
 
-    for _ in range(1 + 3):
-        response = chat(model=model, messages=list(map(asdict, messages)))
+    code = None
+    status: Literal['ok', 'no code', 'invalid code'] = 'ok'
+    for _ in range(1 + retries):
+        response = chat(model=model,
+                        messages=list(map(dataclasses.asdict, messages)))
         message = response.message.content
         assert message is not None
         messages.append(Message('assistant', message))
 
-        snippets = _extract_code_snippets(message)
-        if len(snippets) == 0:
-            results.append(('no code', ''))
+        code = _extract_code(message)
+        if code is None:
+            status = 'no code'
             messages.append(Message('user',
                                      'Please provide the code in ```py...```'))
             continue
 
-        if len(snippets) > 1:
-            print('Multiple code snippets detected:\n'
-                  f'{'\n\n'.join(snippets)}\n')
-
-        code = snippets[-1]
         errors = _check_code(code)
         if errors is not None:
-            results.append(('invalid code', code))
+            status = 'invalid code'
             messages.append(Message('user', errors))
             continue
 
-        results.append(('ok', code))
-        return GeneratedCoverage(messages, results)
+        break
+
+    return GeneratedCoverage(code, messages, status)
+
+
+@dataclass
+class DesignCoverage:
+    design: Path
+    top: str
+    coverage: list[GeneratedCoverage]
+
+    @classmethod
+    def load_data(cls, data_file: Path) -> list[DesignCoverage]:
+        data = json.loads(data_file.read_text())
+        config = dacite.Config(cast=[Path])
+        return [dacite.from_dict(cls, x, config) for x in data]
+
+
+def generate(dataset_file: Path, model: str) -> list[DesignCoverage]:
+    data = dataset.load(dataset_file)
+    coverages: dict[int, list[GeneratedCoverage]] = {}
+    designs_requirements = [(d, r) for d in data for r in d.requirements]
+    for design, requirement in alive_it(designs_requirements):
+        coverage = generate_coverage(model, requirement.description)
+        coverages.setdefault(id(design), []).append(coverage)
+
+    return [DesignCoverage(d.design, d.name, coverages[id(d)]) for d in data]
+
+
+def main() -> None:
+    def _path_default(obj: object) -> object:
+        if isinstance(obj, Path):
+            return str(obj)
+        raise TypeError
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dataset_file', type=Path)
+    parser.add_argument('-m', '--model', type=str, required=True)
+    parser.add_argument('-o', '--output', type=Path, default='coverage.json')
+
+    args = parser.parse_args()
+    assert args.dataset_file.exists()
+
+    coverage = generate(args.dataset_file, args.model)
+    args.output.write_text(json.dumps(list(map(dataclasses.asdict, coverage)),
+                                      default=_path_default))
+    print(f'Stored generated coverage results in: {args.output}')
+
+
+if __name__ == '__main__':
+    main()

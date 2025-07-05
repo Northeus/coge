@@ -97,7 +97,7 @@ class Coverage:
             total += len(cross.cross)
             done += sum(x > 0 for x in cross.hits)
 
-        return done / total if total != 0 else 0.0
+        return done / total
 
     def print(self) -> None:
         for coverpoint in self.coverpoints:

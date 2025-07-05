@@ -1,0 +1,461 @@
+[
+  {
+    "top": "ALU",
+    "requirements": [
+      {
+        "description": "Cover transitions 0 -> 1 and 1 -> 0 on the ACT signal.",
+        "coverpoints": [
+          {
+            "port": "ACT",
+            "sequences": [
+              [
+                0,
+                1
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cover transitionas 0 -> 1 and 1 -> 0 on the RST signal, at least 5 times.",
+        "coverpoints": [
+          {
+            "port": "RST",
+            "sequences": [
+              [
+                0,
+                1
+              ],
+              [
+                1,
+                0
+              ]
+            ],
+            "at_least": 5
+          }
+        ]
+      },
+      {
+        "description": "Cross cover all possible ACT signal values with all possible RST signal values.",
+        "coverpoints": [
+          {
+            "cross": [
+              {
+                "port": "ACT",
+                "values": [
+                  {
+                    "all": [
+                      0,
+                      1
+                    ]
+                  }
+                ]
+              },
+              {
+                "port": "RST",
+                "values": [
+                  {
+                    "all": [
+                      0,
+                      1
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cross cover the value 1 of ACT signal with all possible operations represented by signal OP.",
+        "coverpoints": [
+          {
+            "cross": [
+              {
+                "port": "ACT",
+                "values": [
+                  {
+                    "all": [
+                      1,
+                      1
+                    ]
+                  }
+                ]
+              },
+              {
+                "port": "OP",
+                "values": [
+                  {
+                    "all": [
+                      0,
+                      15
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cover all possible combinations of signal OP with the values of signal MOVI.",
+        "coverpoints": [
+          {
+            "cross": [
+              {
+                "port": "MOVI",
+                "values": [
+                  {
+                    "all": [
+                      0,
+                      3
+                    ]
+                  }
+                ]
+              },
+              {
+                "port": "OP",
+                "values": [
+                  {
+                    "all": [
+                      0,
+                      15
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cover different ranges of values for the first operand represented by the signal REG_A. Specificilly, create a separate bins for: value 0, for single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
+        "coverpoints": [
+          {
+            "port": "REG_A",
+            "values": [
+              {
+                "all": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "one": [
+                  1,
+                  5
+                ]
+              },
+              {
+                "all": [
+                  4294967295,
+                  4294967295
+                ]
+              },
+              {
+                "one": [
+                  4294967290,
+                  4294967294
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cover different ranges of values for the first operand represented by the signal REG_B. Specificilly, create a separate bins for: value 0, for single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
+        "coverpoints": [
+          {
+            "port": "REG_B",
+            "values": [
+              {
+                "all": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "one": [
+                  1,
+                  5
+                ]
+              },
+              {
+                "all": [
+                  4294967295,
+                  4294967295
+                ]
+              },
+              {
+                "one": [
+                  4294967290,
+                  4294967294
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cover different ranges of values for the first operand represented by the signal MEM. Specificilly, create a separate bins for: value 0, for single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
+        "coverpoints": [
+          {
+            "port": "MEM",
+            "values": [
+              {
+                "all": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "one": [
+                  1,
+                  5
+                ]
+              },
+              {
+                "all": [
+                  4294967295,
+                  4294967295
+                ]
+              },
+              {
+                "one": [
+                  4294967290,
+                  4294967294
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cover different ranges of values for the first operand represented by the signal IMM. Specificilly, create a separate bins for: value 0, for single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
+        "coverpoints": [
+          {
+            "port": "IMM",
+            "values": [
+              {
+                "all": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "one": [
+                  1,
+                  5
+                ]
+              },
+              {
+                "all": [
+                  4294967295,
+                  4294967295
+                ]
+              },
+              {
+                "one": [
+                  4294967290,
+                  4294967294
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Check that all values of MOVI signal were tested. Differenciate that the value 3 of MOVI signal is unsupported and thus should be included in the illegal_bin.",
+        "coverpoints": [
+          {
+            "port": "MOVI",
+            "values": [
+              {
+                "all": [
+                  0,
+                  2
+                ]
+              }
+            ],
+            "illegal_values": [
+              {
+                "all": [
+                  3,
+                  3
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cover transitions 0 -> 1 -> 0 and 0 -> 1 -> 1 -> 0 on the VLD signal.",
+        "coverpoints": [
+          {
+            "port": "VLD",
+            "sequences": [
+              [
+                0,
+                1,
+                0
+              ],
+              [
+                0,
+                1,
+                1,
+                0
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cross cover all possible ACT signal values with all possible RDY signal values.",
+        "coverpoints": [
+          {
+            "cross": [
+              {
+                "port": "ACT",
+                "values": [
+                  {
+                    "all": [
+                      0,
+                      1
+                    ]
+                  }
+                ]
+              },
+              {
+                "port": "RDY",
+                "values": [
+                  {
+                    "all": [
+                      0,
+                      1
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cover transitions 1 -> 0 -> 1, 1 -> 0 -> 0 -> 0 -> 1 and 1 > 0 -> 0 -> 1 on the RDY signal.",
+        "coverpoints": [
+          {
+            "port": "RDY",
+            "sequences": [
+              [
+                1,
+                0,
+                1
+              ],
+              [
+                1,
+                0,
+                0,
+                1
+              ],
+              [
+                1,
+                0,
+                0,
+                0,
+                1
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cross cover a small value from range [0:1000] of registers REG_A and REG_B.",
+        "coverpoints": [
+          {
+            "cross": [
+              {
+                "port": "REG_A",
+                "values": [
+                  {
+                    "one": [
+                      0,
+                      1000
+                    ]
+                  }
+                ]
+              },
+              {
+                "port": "REG_B",
+                "values": [
+                  {
+                    "one": [
+                      0,
+                      1000
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Check that regiseter DATA contained both the smallest and the largest value.",
+        "coverpoints": [
+          {
+            "port": "DATA",
+            "values": [
+              {
+                "all": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "all": [
+                  4294967295,
+                  4294967295
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "description": "Cross cover that regiseter DATA contained value from range [0:1000] for first four operations from signal OP ",
+        "coverpoints": [
+          {
+            "cross": [
+              {
+                "port": "OP",
+                "values": [
+                  {
+                    "all": [
+                      0,
+                      3
+                    ]
+                  }
+                ]
+              },
+              {
+                "port": "DATA",
+                "values": [
+                  {
+                    "one": [
+                      0,
+                      1000
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
