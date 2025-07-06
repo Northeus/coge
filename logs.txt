@@ -2,7 +2,7 @@ GPU: NVIDIA A100 80GB PCIe
 
 
 >>> python pipeline.py deepseek-r1:7b -o results/deepseek_r1:7b.json
-...
+Generating requirements |████████████████████████████████████████| 80/80 [100%] in 39:32.9 (0.03/s)
 
 >>> python pipeline.py deepseek-r1:14b -o results/deepseek_r1:14b.json
 Generating requirements |████████████████████████████████████████| 80/80 [100%] in 27:04.4 (0.05/s)

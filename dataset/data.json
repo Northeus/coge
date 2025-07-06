@@ -21,7 +21,7 @@
         ]
       },
       {
-        "description": "Cover transitionas 0 -> 1 and 1 -> 0 on the RST signal, at least 5 times.",
+        "description": "Cover transitions 0 -> 1 and 1 -> 0 on the RST signal, at least 5 times.",
         "coverpoints": [
           {
             "port": "RST",
@@ -71,7 +71,7 @@
         ]
       },
       {
-        "description": "Cross cover the value 1 of ACT signal with all possible operations represented by signal OP.",
+        "description": "Cross cover the value 1 of the ACT signal with all possible operations represented by signal the OP.",
         "coverpoints": [
           {
             "cross": [
@@ -102,7 +102,7 @@
         ]
       },
       {
-        "description": "Cover all possible combinations of signal OP with the values of signal MOVI.",
+        "description": "Cover all possible combinations of signal OP with the values of the signal MOVI.",
         "coverpoints": [
           {
             "cross": [
@@ -133,7 +133,7 @@
         ]
       },
       {
-        "description": "Cover different ranges of values for the first operand represented by the signal REG_A. Specificilly, create a separate bins for: value 0, for single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
+        "description": "Cover different ranges of values for the first operand represented by the signal REG_A. Specifically, create a separate bins for: value 0, for a single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
         "coverpoints": [
           {
             "port": "REG_A",
@@ -167,7 +167,7 @@
         ]
       },
       {
-        "description": "Cover different ranges of values for the first operand represented by the signal REG_B. Specificilly, create a separate bins for: value 0, for single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
+        "description": "Cover different ranges of values for the first operand represented by the signal REG_B. Specifically, create a separate bins for: value 0, for a single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
         "coverpoints": [
           {
             "port": "REG_B",
@@ -201,7 +201,7 @@
         ]
       },
       {
-        "description": "Cover different ranges of values for the first operand represented by the signal MEM. Specificilly, create a separate bins for: value 0, for single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
+        "description": "Cover different ranges of values for the first operand represented by the signal MEM. Specifically, create a separate bins for: value 0, for a single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
         "coverpoints": [
           {
             "port": "MEM",
@@ -235,7 +235,7 @@
         ]
       },
       {
-        "description": "Cover different ranges of values for the first operand represented by the signal IMM. Specificilly, create a separate bins for: value 0, for single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
+        "description": "Cover different ranges of values for the first operand represented by the signal IMM. Specifically, create a separate bins for: value 0, for a single value from range [1:5], MAX VALUE, and a single value from range [MAX_VALUE - 5:MAX_VALUE].",
         "coverpoints": [
           {
             "port": "IMM",
@@ -269,7 +269,7 @@
         ]
       },
       {
-        "description": "Check that all values of MOVI signal were tested. Differenciate that the value 3 of MOVI signal is unsupported and thus should be included in the illegal_bin.",
+        "description": "Check that all values of the MOVI signal were tested. Differentiate that the value 3 of the MOVI signal is unsupported and thus should be included in the illegal_bin.",
         "coverpoints": [
           {
             "port": "MOVI",
@@ -345,7 +345,7 @@
         ]
       },
       {
-        "description": "Cover transitions 1 -> 0 -> 1, 1 -> 0 -> 0 -> 0 -> 1 and 1 > 0 -> 0 -> 1 on the RDY signal.",
+        "description": "Cover transitions 1 -> 0 -> 1, 1 -> 0 -> 0 -> 0 -> 1 and 1 -> 0 -> 0 -> 1 on the RDY signal.",
         "coverpoints": [
           {
             "port": "RDY",
@@ -373,7 +373,7 @@
         ]
       },
       {
-        "description": "Cross cover a small value from range [0:1000] of registers REG_A and REG_B.",
+        "description": "Cross cover a small value from the range [0:1000] of registers REG_A and REG_B.",
         "coverpoints": [
           {
             "cross": [
@@ -404,7 +404,7 @@
         ]
       },
       {
-        "description": "Check that regiseter DATA contained both the smallest and the largest value.",
+        "description": "Check that the register DATA contained both the smallest and the largest value.",
         "coverpoints": [
           {
             "port": "DATA",
@@ -426,7 +426,7 @@
         ]
       },
       {
-        "description": "Cross cover that regiseter DATA contained value from range [0:1000] for first four operations from signal OP ",
+        "description": "Cross cover that the register DATA contained value from the range [0:1000] for the first four operations from signal OP.",
         "coverpoints": [
           {
             "cross": [

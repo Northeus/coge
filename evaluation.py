@@ -155,11 +155,11 @@ def main() -> None:
     print('Syntax and feasibility+ports table (max, min, avg):')
     print('-' * 80)
     for model in ordered_model_names:
-        data = results[model]
+        _data = results[model]
         synt = [sum(y != 'code error' for y in x.simulation.status)
-                for x in data]
+                for x in _data]
         comp = [sum(y == 'ok' for y in x.simulation.status)
-                for x in data]
+                for x in _data]
         print(model,
               '|', max(synt), min(synt), avg(synt),
               '|', max(comp), min(comp), avg(comp))
@@ -169,8 +169,8 @@ def main() -> None:
     model_correct_result = {}
     for model, batch in results.items():
         stats = [0] * 4
-        for data in batch:
-            for gen, sim in zip(data.coverage, data.simulation.status):
+        for _data in batch:
+            for gen, sim in zip(_data.coverage, _data.simulation.status):
                 if sim == 'ok':
                     stats[len(gen.code) - 1] += 1
         model_correct_result[model] = stats
@@ -192,23 +192,31 @@ def main() -> None:
     plt.tight_layout()
     plt.show()
 
-    # TODO: better than statement coverage
+    # Complexity table
+    print('=' * 80)
+    print('Complexity (out of 5)')
+    print('-' * 80)
+    for model in ordered_model_names:
+        comp = 0
+        for _data in results[model]:
+            if isinstance(_data.simulation.coverage, list):
+                comp += all(x.statement > x.functional and x.functional != 0
+                            for x in _data.simulation.coverage
+                            if x.statement >= 0.9)
+        print(model, '|', comp)
+    print('=' * 80)
 
     # Accuracy histograms
     desired = load_desired()
     model_accuracy = {}
-    model_accuracy_sub = {}
     for model, batch in results.items():
         accuracy = []
-        accuracy_sub = []
-        for data in batch:
+        for _data in batch:
             port_widths = {port: size
-                           for port, size in data.simulation.ports.sizes}
+                           for port, size in _data.simulation.ports.sizes}
             coverage.register_port_width(lambda x: port_widths[x])
-
-            exact = 0
-            more = 0
-            for i, gen, sim in zip(count(), data.coverage, data.simulation.status):
+            accurate = 0
+            for i, gen, sim in zip(count(), _data.coverage, _data.simulation.status):
                 if sim == 'ok' and gen.code[-1][0] == 'ok':
                     locals = {}
                     with (open(os.devnull, 'w') as fnull,
@@ -219,41 +227,30 @@ def main() -> None:
                     crosses = [x for x in locals.values()
                                if isinstance(x, coverage.Cross)]
                     generated = cov_from_sim(coverpoints, crosses)
-                    target = desired[data.top][i]
-                    exact += generated == target
-                    more += generated >= target
-            accuracy.append(exact)
-            accuracy_sub.append(more)
+                    target = desired[_data.top][i]
+                    accurate += generated >= target
+            accuracy.append(accurate)
         model_accuracy[model] = accuracy
-        model_accuracy_sub[model] = accuracy_sub
     print('=' * 80)
     print('Accuracy and more table (max, min, avg):')
     print('-' * 80)
-    data = []
-    data_sub = []
+    _data = []
     x_labels = ['max', 'min', 'avg']
     for model in ordered_model_names:
         acc = model_accuracy[model]
-        acc_sub = model_accuracy_sub[model]
         print(model,
-              '|', max(acc), min(acc), avg(acc),
-              '|', max(acc_sub), min(acc_sub), avg(acc_sub))
-        data.append([max(acc), min(acc), avg(acc)])
-        data_sub.append([max(acc_sub), min(acc_sub), avg(acc_sub)])
-    _, axes = plt.subplots(1, 2, figsize=(9, 5), constrained_layout=True)
-    sns.heatmap(data, annot=True, cmap='RdYlGn', fmt=".2f", linewidths=0.5,
+              '|', max(acc), min(acc), avg(acc))
+        _data.append([max(acc), min(acc), avg(acc)])
+
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(_data, annot=True, cmap='RdYlGn', fmt=".2f", linewidths=0.5,
                 xticklabels=x_labels, yticklabels=ordered_model_names,
-                ax=axes[0], cbar_kws={'label': 'Accuracy'}, cbar=False, vmax=16,
+                cbar_kws={'label': 'Accuracy'}, cbar=False, vmax=16,
                 annot_kws={"fontweight": "bold"})
-    axes[0].set_title('Matched exactly requirements')
-    axes[0].set_ylabel('LLM')
-    axes[0].set_xlabel('Accuracy (%)')
-    sns.heatmap(data_sub, annot=True, cmap='RdYlGn', fmt=".2f", linewidths=0.5,
-                xticklabels=x_labels, yticklabels=False,
-                ax=axes[1], cbar_kws={'label': 'Accuracy'}, cbar=False, vmax=16,
-                annot_kws={"fontweight": "bold"})
-    axes[1].set_title('Contained additional functionality')
-    axes[1].set_xlabel('Accuracy (%)')
+    plt.title('Matched exactly requirements')
+    plt.ylabel('LLM')
+    plt.xlabel('Accuracy (%)')
+    plt.tight_layout()
     plt.show()
 
 
