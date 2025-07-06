@@ -247,7 +247,7 @@ def main() -> None:
                 xticklabels=x_labels, yticklabels=ordered_model_names,
                 cbar_kws={'label': 'Accuracy'}, cbar=False, vmax=16,
                 annot_kws={"fontweight": "bold"})
-    plt.title('Matched exactly requirements')
+    plt.title('Contained all requirements')
     plt.ylabel('LLM')
     plt.xlabel('Accuracy (%)')
     plt.tight_layout()
