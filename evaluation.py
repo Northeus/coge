@@ -180,7 +180,7 @@ def main() -> None:
     bar_width = 0.1
     mid = (groups_n - 1) / 2
     offsets = np.linspace(-mid * bar_width, mid * bar_width, groups_n)
-    colors = sns.color_palette("pastel6", groups_n)
+    colors = sns.color_palette("pastel", groups_n)
     for i, model in enumerate(ordered_model_names):
         heights = model_correct_result[model]
         plt.bar(x + offsets[i], heights,
