@@ -1,0 +1,31 @@
+GPU: NVIDIA A100 80GB PCIe
+
+
+>>> python pipeline.py deepseek-r1:7b -o results/deepseek_r1:7b.json
+...
+
+>>> python pipeline.py deepseek-r1:14b -o results/deepseek_r1:14b.json
+Generating requirements |████████████████████████████████████████| 80/80 [100%] in 27:04.4 (0.05/s)
+
+
+>>> python pipeline.py gemma3:1b -o results/gemma3:1b.json
+Generating requirements |████████████████████████████████████████| 80/80 [100%] in 5:41.9 (0.23/s)
+
+>>> python pipeline.py gemma3:4b -o results/gemma3:4b.json
+Generating requirements |████████████████████████████████████████| 80/80 [100%] in 2:23.9 (0.55/s)
+
+>>> python pipeline.py gemma3:12b -o results/gemma3:12b.json
+Generating requirements |████████████████████████████████████████| 80/80 [100%] in 3:45.7 (0.35/s)
+
+
+>>> python pipeline.py qwen3:1.7b -o results/qwen3:1.7b.json
+Generating requirements |████████████████████████████████████████| 80/80 [100%] in 27:41.2 (0.05/s)
+
+>>> python pipeline.py qwen3:4b -o results/qwen3:4b.json
+Generating requirements |████████████████████████████████████████| 80/80 [100%] in 11:25.6 (0.12/s)
+
+>>> python pipeline.py qwen3:8b -o results/qwen3:8b.json
+Generating requirements |████████████████████████████████████████| 80/80 [100%] in 15:16.5 (0.09/s)
+
+>>> python pipeline.py qwen3:14b -o results/qwen3:14b.json
+Generating requirements |████████████████████████████████████████| 80/80 [100%] in 19:50.5 (0.07/s)

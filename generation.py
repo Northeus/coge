@@ -99,7 +99,8 @@ def port_width(name: str) -> int:
 
 Please ensure all functional coverage objects returned \
 by the API are stored in variables to be used later! \
-Provide just the required code!
+Provide just the required code! Ensure that the final code \
+is all within a single snippet!
 
 Examples of the conversation:
 User: Ensure all values of OP port are checked, furthermore check that all values OP were checked against one fromt the first 3 values of SEL.
@@ -199,4 +200,6 @@ def generate(requirement: str, model: str) -> GeneratedCoverage:
             continue
 
         results.append(('ok', code))
-        return GeneratedCoverage(messages, results)
+        break
+
+    return GeneratedCoverage(messages, results)

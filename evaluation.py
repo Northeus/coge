@@ -1,0 +1,261 @@
+import contextlib
+import os
+from argparse import ArgumentParser
+from itertools import count
+from pathlib import Path
+from typing import Literal, NamedTuple
+
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from natsort import natsorted
+
+import coverage
+import dataset
+import pipeline
+
+
+Value = tuple[int, int]
+
+
+class Bin(NamedTuple):
+    cat: Literal['normal', 'illegal']
+    port: str
+    value: Value
+    at_least: int = 1
+
+
+class Sequence(NamedTuple):
+    port: str
+    sequence: tuple[int, ...]
+    at_least: int = 1
+
+
+class Cross(NamedTuple):
+    ports: tuple[str, ...]
+    bins: tuple[tuple[Value, ...], ...]
+
+
+def avg(data: list[int]) -> float:
+    return 0 if len(data) == 0 else sum(data) / len(data)
+
+
+def cov_from_sim(cp: list[coverage.Coverpoint],
+                 crosses: list[coverage.Cross]
+                 ) -> set[Bin | Sequence | Cross]:
+    result = set()
+    for c in cp:
+        for i in c.illegal_bins:
+            lower, upper = i.value_range
+            result |= {Bin('illegal', c.port, (x, x))
+                       for x in range(lower, upper + 1)}
+        for n in c.bins:
+            filtered = [n.value_range]
+            for i in c.ignore_bins:
+                unignored = []
+                for f in filtered:
+                    li, ui = i.value_range
+                    lf, uf = f
+                    if lf <= uf < li:
+                        unignored.append((lf, uf))
+                    elif lf < li and li <= uf <= ui:
+                        unignored.append((lf, li - 1))
+                    elif lf < li and ui < uf:
+                        unignored.append((lf, li - 1))
+                        unignored.append((ui + 1, uf))
+                    elif li <= lf <= uf <= ui:
+                        pass
+                    elif li <= lf <= ui and ui < uf:
+                        unignored.append((ui + 1, uf))
+                    elif ui < lf <= uf:
+                        unignored.append((lf, uf))
+                    else:
+                        assert False
+                filtered = unignored
+            result |= {Bin('normal', c.port, x, n.at_least)
+                       for x in filtered}
+        for s in c.sequences:
+            result.add(Sequence(c.port, tuple(s.sequence), s.at_least))
+    for _c in crosses:
+        if not all(len({y.port for y in x}) == 1 for x in _c.cross):
+            continue
+        c = sorted(_c.cross, key=lambda x: x[0].port)
+        result.add(Cross(tuple(x[0].port for x in c),
+                         tuple(tuple(sorted(y.value_range for y in x))
+                               for x in c)))
+    return result
+
+
+def cov_from_dataset(cp: list[dataset.Coverpoint],
+                     crosses: list[dataset.Cross]
+                     ) -> set[Bin | Sequence | Cross]:
+    result = set()
+    for c in cp:
+        for i in c.illegal_values:
+            lower, upper = i.one if isinstance(i, dataset.OneValue) else i.all
+            result |= {Bin('illegal', c.port, (x, x))
+                       for x in range(lower, upper + 1)}
+        for n in c.values:
+            if isinstance(n, dataset.OneValue):
+                result.add(Bin('normal', c.port, n.one, c.at_least))
+            else:
+                lower, upper = n.all
+                result |= {Bin('normal', c.port, (x, x), c.at_least)
+                           for x in range(lower, upper + 1)}
+        for s in c.sequences:
+            result.add(Sequence(c.port, tuple(s), c.at_least))
+    for _c in crosses:
+        c = sorted(_c.cross, key=lambda x: x.port)
+        cross_values = []
+        for e in c:
+            values = []
+            for v in e.values:
+                if isinstance(v, dataset.AllValues):
+                    lower, upper = v.all
+                    values += [(x, x) for x in range(lower, upper + 1)]
+                else:
+                    values.append(v.one)
+            cross_values.append(tuple(sorted(values)))
+        result.add(Cross(tuple(x.port for x in c),
+                         tuple(cross_values)))
+    return result
+
+
+def load_desired() -> dict[str, list[set[Bin | Sequence | Cross]]]:
+    data = dataset.load(Path(__file__).parent.resolve()
+                        / 'dataset' / 'data.json')
+    desired = {}
+    for design in data:
+        cov = []
+        for req in design.requirements:
+            cov.append(cov_from_dataset(
+                    [x for x in req.coverpoints
+                     if isinstance(x, dataset.Coverpoint)],
+                    [x for x in req.coverpoints
+                     if isinstance(x, dataset.Cross)],
+            ))
+        desired[design.top] = cov
+    return desired
+
+
+def main() -> None:
+    parser = ArgumentParser()
+    parser.add_argument('results_dir', type=Path)
+    args = parser.parse_args()
+    assert isinstance(args.results_dir, Path) and args.results_dir.is_dir()
+
+    results = {}
+    for result_file in args.results_dir.iterdir():
+        results[result_file.name.removesuffix('.json')] = \
+                pipeline.Result.load_data(result_file)
+    ordered_model_names = natsorted(results.keys())
+
+    # syntactically correct table
+    print('=' * 80)
+    print('Syntax and feasibility+ports table (max, min, avg):')
+    print('-' * 80)
+    for model in ordered_model_names:
+        data = results[model]
+        synt = [sum(y != 'code error' for y in x.simulation.status)
+                for x in data]
+        comp = [sum(y == 'ok' for y in x.simulation.status)
+                for x in data]
+        print(model,
+              '|', max(synt), min(synt), avg(synt),
+              '|', max(comp), min(comp), avg(comp))
+    print('=' * 80)
+
+    # Required static analysis plot
+    model_correct_result = {}
+    for model, batch in results.items():
+        stats = [0] * 4
+        for data in batch:
+            for gen, sim in zip(data.coverage, data.simulation.status):
+                if sim == 'ok':
+                    stats[len(gen.code) - 1] += 1
+        model_correct_result[model] = stats
+
+    x = np.array([0, 1, 2, 3])
+    groups_n = len(model_correct_result)
+    bar_width = 0.1
+    mid = (groups_n - 1) / 2
+    offsets = np.linspace(-mid * bar_width, mid * bar_width, groups_n)
+    colors = sns.color_palette("pastel6", groups_n)
+    for i, model in enumerate(ordered_model_names):
+        heights = model_correct_result[model]
+        plt.bar(x + offsets[i], heights,
+                width=bar_width, label=model, color=colors[i])
+    plt.xticks(x, list(map(str, x)))
+    plt.xlabel("Number of failed static analysis")
+    plt.ylabel("Count")
+    plt.legend(title="Models")
+    plt.tight_layout()
+    plt.show()
+
+    # TODO: better than statement coverage
+
+    # Accuracy histograms
+    desired = load_desired()
+    model_accuracy = {}
+    model_accuracy_sub = {}
+    for model, batch in results.items():
+        accuracy = []
+        accuracy_sub = []
+        for data in batch:
+            port_widths = {port: size
+                           for port, size in data.simulation.ports.sizes}
+            coverage.register_port_width(lambda x: port_widths[x])
+
+            exact = 0
+            more = 0
+            for i, gen, sim in zip(count(), data.coverage, data.simulation.status):
+                if sim == 'ok' and gen.code[-1][0] == 'ok':
+                    locals = {}
+                    with (open(os.devnull, 'w') as fnull,
+                          contextlib.redirect_stdout(fnull)):
+                        exec(gen.code[-1][1], locals=locals)
+                    coverpoints = [x for x in locals.values()
+                                   if isinstance(x, coverage.Coverpoint)]
+                    crosses = [x for x in locals.values()
+                               if isinstance(x, coverage.Cross)]
+                    generated = cov_from_sim(coverpoints, crosses)
+                    target = desired[data.top][i]
+                    exact += generated == target
+                    more += generated >= target
+            accuracy.append(exact)
+            accuracy_sub.append(more)
+        model_accuracy[model] = accuracy
+        model_accuracy_sub[model] = accuracy_sub
+    print('=' * 80)
+    print('Accuracy and more table (max, min, avg):')
+    print('-' * 80)
+    data = []
+    data_sub = []
+    x_labels = ['max', 'min', 'avg']
+    for model in ordered_model_names:
+        acc = model_accuracy[model]
+        acc_sub = model_accuracy_sub[model]
+        print(model,
+              '|', max(acc), min(acc), avg(acc),
+              '|', max(acc_sub), min(acc_sub), avg(acc_sub))
+        data.append([max(acc), min(acc), avg(acc)])
+        data_sub.append([max(acc_sub), min(acc_sub), avg(acc_sub)])
+    _, axes = plt.subplots(1, 2, figsize=(9, 5), constrained_layout=True)
+    sns.heatmap(data, annot=True, cmap='RdYlGn', fmt=".2f", linewidths=0.5,
+                xticklabels=x_labels, yticklabels=ordered_model_names,
+                ax=axes[0], cbar_kws={'label': 'Accuracy'}, cbar=False, vmax=16,
+                annot_kws={"fontweight": "bold"})
+    axes[0].set_title('Matched exactly requirements')
+    axes[0].set_ylabel('LLM')
+    axes[0].set_xlabel('Accuracy (%)')
+    sns.heatmap(data_sub, annot=True, cmap='RdYlGn', fmt=".2f", linewidths=0.5,
+                xticklabels=x_labels, yticklabels=False,
+                ax=axes[1], cbar_kws={'label': 'Accuracy'}, cbar=False, vmax=16,
+                annot_kws={"fontweight": "bold"})
+    axes[1].set_title('Contained additional functionality')
+    axes[1].set_xlabel('Accuracy (%)')
+    plt.show()
+
+
+if __name__ == '__main__':
+    main()

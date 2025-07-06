@@ -198,13 +198,13 @@ def _load_coverage(code_file: Path,
             signal.alarm(5)
             exec(code, globals, locals)
             signal.alarm(0)
-        except TimeoutError as e:
+        except TimeoutError:
             errors.append('timeout')
             continue
         except CoverageSizeError:
             errors.append('too large')
             continue
-        except Exception as e:
+        except Exception:
             errors.append('code error')
             continue
         finally:

@@ -5,7 +5,7 @@
 ## Dataset
 The input into the framework is dataset consisting of verification
 requirements coupled with the desired functional coverage implied by
-them and the designs.
+them and the designs. The `top` must be unique among all instances!
 
 The format of the dataset is:
 ```json

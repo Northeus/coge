@@ -4,6 +4,7 @@ import json
 from argparse import ArgumentParser
 from collections import deque
 from dataclasses import asdict, dataclass
+from itertools import cycle
 from pathlib import Path
 
 import dacite
@@ -34,7 +35,7 @@ class Result:
     def load_data(data_file: Path) -> list[Result]:
         data = json.loads(data_file.read_text())
         config = dacite.Config(cast=[tuple, deque])
-        return dacite.from_dict(list[Result], data, config)
+        return [dacite.from_dict(Result, x, config) for x in data]
 
 
 def main() -> None:
@@ -50,7 +51,7 @@ def main() -> None:
     print()
 
     generated_per_design = []
-    attempts = 1
+    attempts = 5
     total = sum(len(x.requirements) for x in data) * attempts
     with alive_bar(total, title='Generating requirements') as bar:
         for design in data:
@@ -59,15 +60,14 @@ def main() -> None:
                 for req in [x.description for x in design.requirements]:
                     generated.append(generation.generate(req, args.model))
                     bar()
-                    break
-                generated_per_design.append(generated)
+                generated_per_design.append((design, generated))
 
-    print(generated_per_design)
     seed = 42
     results = []
     data_dir = Path(__file__).parent.resolve()
-    for coverage, design in zip(generated_per_design, data):
-        snippets = [x.code[-1][1] for x in coverage]
+    for design, coverage in generated_per_design:
+        snippets = [(x.code[-1][1] if x.code[-1][0] == 'ok' else 'invalid=code')
+                    for x in coverage]
         rslt = testbench.run(testbench.Params(duv=data_dir / design.code,
                                               top_level=design.top,
                                               coverage_snippets=snippets,
