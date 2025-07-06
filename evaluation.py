@@ -205,6 +205,13 @@ def main() -> None:
                             if x.statement >= 0.9)
         print(model, '|', comp)
     print('=' * 80)
+    print('In convergence region:')
+    for model in ordered_model_names:
+        for _data in results[model]:
+            if isinstance(_data.simulation.coverage, list):
+                if any(x.functional >= 0.9 for x in _data.simulation.coverage):
+                    print(model, 'managed to obtain 0.9 functional coverage.')
+    print('=' * 80)
 
     # Accuracy histograms
     desired = load_desired()
