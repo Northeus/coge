@@ -186,7 +186,7 @@ def main() -> None:
         plt.bar(x + offsets[i], heights,
                 width=bar_width, label=model, color=colors[i])
     plt.xticks(x, list(map(str, x)))
-    plt.xlabel("Number of failed static analysis")
+    plt.xlabel("Number of retries with provided logs")
     plt.ylabel("Count")
     plt.legend(title="Models")
     plt.tight_layout()
