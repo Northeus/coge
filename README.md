@@ -1,6 +1,10 @@
 # LLM-based Functional Coverage Generation and Auto-Evaluation Framework
-
-...
+Requirements:
+ 1. Install `Python3.13`.
+ 1. Create `venv` + install requirements via `pip install -r requirements.txt`.
+ 1. Run `Ollama` server with a model of your choice.
+ 1. Generate data using `python pipeline.py [model name] -o [result file]`.
+ 1. Evaluate results by `python evaluation.py [dir containing results files]`
 
 ## Dataset
 The input into the framework is dataset consisting of verification
