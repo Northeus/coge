@@ -15,6 +15,9 @@ import dataset
 import pipeline
 
 
+ATTEMPTS = 5
+
+
 Value = tuple[int, int]
 
 
@@ -207,7 +210,7 @@ def main() -> None:
                             for x in _data.simulation.coverage
                             if x.statement >= 0.9)
         print(model, '|', comp)
-    print('=' * 80)
+    print('-' * 80)
     print('In convergence region:')
     for model in ordered_model_names:
         for _data in results[model]:
@@ -216,18 +219,40 @@ def main() -> None:
                     print(model, 'managed to obtain 0.9 functional coverage.')
     print('=' * 80)
 
+    # Statistics about requirements category
+    print('=' * 80)
+    print('Number of requirements per category:')
+    print('-' * 80)
+    categories_cnt = {}
+    designs = dataset.load(Path(__file__).parent.resolve()
+                        / 'dataset' / 'data.json')
+    for design in designs:
+        for req in design.requirements:
+            categories_cnt[req.target] = categories_cnt.get(req.target, 0) + 1
+    for category, cnt in categories_cnt.items():
+        print(category, cnt)
+    print('=' * 80)
+
     # Accuracy histograms
     desired = load_desired()
     model_accuracy = {}
+    requirement_accuracy = {}
+    req_targets = ['bin', 'sequence', 'cross']
+    model_req_acc = {}
     for model, batch in results.items():
         accuracy = []
+        req_acc = [0] * len(req_targets)
         for _data in batch:
             port_widths = {port: size
                            for port, size in _data.simulation.ports.sizes}
             coverage.register_port_width(lambda x: port_widths[x])
             accurate = 0
+            design = next(d for d in designs if d.top == _data.top)
+            req_targets_id_map = {
+                    i: next(j for j, y in enumerate(req_targets) if y == x.target)
+                    for i, x in enumerate(design.requirements)
+            }
             for i, gen, sim in zip(count(), _data.coverage, _data.simulation.status):
-                print(i)
                 if sim == 'ok' and gen.code[-1][0] == 'ok':
                     locals = {}
                     with (open(os.devnull, 'w') as fnull,
@@ -239,39 +264,74 @@ def main() -> None:
                                if isinstance(x, coverage.Cross)]
                     generated = cov_from_sim(coverpoints, crosses)
                     target = desired[_data.top][i]
-                    accurate += generated >= target
-                    print(coverpoints)
-                    print(crosses)
-                    print(generated)
-                    print()
-                    print(target)
-                    print()
-                    print(generated >= target)
-                    print()
-                    print()
+                    ok = generated >= target
+                    accurate += ok
+                    req_acc[req_targets_id_map[i]] += ok
+                    model_req_acc.setdefault(model, [0]*len(req_targets_id_map))
+                    model_req_acc[model][i] += ok
             accuracy.append(accurate)
         model_accuracy[model] = accuracy
+        requirement_accuracy[model] = req_acc
     print('=' * 80)
     print('Accuracy and more table (max, min, avg):')
     print('-' * 80)
     _data = []
-    x_labels = ['max', 'min', 'avg']
+    _data_req = []
+    x_labels = ['best', 'worst', 'mean']
     for model in ordered_model_names:
         acc = model_accuracy[model]
         print(model,
               '|', max(acc), min(acc), avg(acc))
         _data.append([max(acc), min(acc), avg(acc)])
+        _data_req.append(requirement_accuracy[model])
+    print('=' * 80)
 
+    _data = np.array(_data) * 100.0 / 16.0
     plt.figure(figsize=(6, 5))
     sns.heatmap(_data, annot=True, cmap='RdYlGn', fmt=".2f", linewidths=0.5,
                 xticklabels=x_labels, yticklabels=ordered_model_names,
-                cbar_kws={'label': 'Accuracy'}, cbar=False, vmax=16,
+                cbar_kws={'label': 'Accuracy (%)'}, cbar=True, vmax=100,
                 annot_kws={"fontweight": "bold"})
-    plt.title('Contained all requirements')
+    plt.title('Accuracy of LLMs per generated instances')
     plt.ylabel('LLM')
-    plt.xlabel('Accuracy (%)')
+    plt.xlabel('Considered instances')
     plt.tight_layout()
     plt.show()
+
+    req_norm = np.array([categories_cnt[x] for x in req_targets]) * ATTEMPTS
+    _data_req = np.array(_data_req) * 100.0 / req_norm
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(_data_req, annot=True, cmap='RdYlGn', fmt=".2f", linewidths=0.5,
+                xticklabels=req_targets, yticklabels=ordered_model_names,
+                cbar_kws={'label': 'Accuracy (%)'}, cbar=True, vmax=100,
+                annot_kws={"fontweight": "bold"})
+    plt.title('Accuracy of LLMs per requirement target')
+    plt.ylabel('LLM')
+    plt.xlabel('Requirement target')
+    plt.tight_layout()
+    plt.show()
+
+    _data_model_req = []
+    x_labels_req = list(map(str, range(1, 17)))
+    for model in ordered_model_names:
+        _data_model_req.append(model_req_acc[model])
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(_data_model_req, annot=True, cmap='RdYlGn', linewidths=0.5,
+                xticklabels=x_labels_req, yticklabels=ordered_model_names,
+                cbar=False, vmax=ATTEMPTS, annot_kws={"fontweight": "bold"})
+    plt.title('Accuracy of LLMs per requirement')
+    plt.ylabel('LLM')
+    plt.xlabel('Requirement id')
+    plt.tight_layout()
+    plt.show()
+    # Based on previous plot
+    print('=' * 80)
+    print('Selected requirements:')
+    print('-' * 80)
+    for i in [13, 15]:
+        design = designs[0]
+        print(design.requirements[i].description)
+    print('=' * 80)
 
 
 if __name__ == '__main__':
