@@ -355,7 +355,9 @@ async def test_module(dut: HierarchyObject) -> None:
         await RisingEdge(clock.handle)
 
         values = {port.name: int(port.handle.value) for port in ports}
-        _coverage.sample_all(values)
+        if ((reset is None or reset.handle.value == 0)
+                and (reset_n is None or reset_n.handle.value == 1)):
+            _coverage.sample_all(values)
 
         if store_coverage:
             statement = _statement_coverage(params.coverage.parent)
