@@ -328,9 +328,9 @@ def main() -> None:
     print('=' * 80)
     print('Selected requirements:')
     print('-' * 80)
-    for i in [13, 15]:
-        design = designs[0]
-        print(design.requirements[i].description)
+    design = designs[0]
+    for i, req in enumerate(design.requirements):
+        print(f'{i}.', req.description)
     print('=' * 80)
 
 

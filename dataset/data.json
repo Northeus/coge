@@ -22,7 +22,7 @@
         "target": "sequence"
       },
       {
-        "description": "Cover transitions 0 -> 1 and 1 -> 0 on the RST signal, at least 5 times.",
+        "description": "Cover transitions 0 -> 1 and 1 -> 0 on the RST signal, each transition should occure at least 5 times.",
         "coverpoints": [
           {
             "port": "RST",
