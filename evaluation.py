@@ -76,13 +76,16 @@ def cov_from_sim(cp: list[coverage.Coverpoint],
                        for x in filtered}
         for s in c.sequences:
             result.add(Sequence(c.port, tuple(s.sequence), s.at_least))
-    for _c in crosses:
-        if not all(len({y.port for y in x}) == 1 for x in _c.cross):
+    for c in crosses:
+        if not all(len({y.port for y in x}) == len(x) for x in c.cross):
             continue
-        c = sorted(_c.cross, key=lambda x: x[0].port)
-        result.add(Cross(tuple(x[0].port for x in c),
-                         tuple(tuple(sorted(y.value_range for y in x))
-                               for x in c)))
+        data = [(x.port, set()) for x in c.cross[0]]
+        for line in c.cross:
+            for i, b in enumerate(line):
+                data[i][1].add(b.value_range)
+        data.sort(key=lambda x: x[0])
+        result.add(Cross(tuple(sorted(x for x, _ in data)),
+                         tuple(tuple(sorted(x)) for _, x in data)))
     return result
 
 
@@ -224,6 +227,7 @@ def main() -> None:
             coverage.register_port_width(lambda x: port_widths[x])
             accurate = 0
             for i, gen, sim in zip(count(), _data.coverage, _data.simulation.status):
+                print(i)
                 if sim == 'ok' and gen.code[-1][0] == 'ok':
                     locals = {}
                     with (open(os.devnull, 'w') as fnull,
@@ -236,6 +240,15 @@ def main() -> None:
                     generated = cov_from_sim(coverpoints, crosses)
                     target = desired[_data.top][i]
                     accurate += generated >= target
+                    print(coverpoints)
+                    print(crosses)
+                    print(generated)
+                    print()
+                    print(target)
+                    print()
+                    print(generated >= target)
+                    print()
+                    print()
             accuracy.append(accurate)
         model_accuracy[model] = accuracy
     print('=' * 80)
