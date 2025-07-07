@@ -10,6 +10,10 @@ Requirements:
 The input into the framework is dataset consisting of verification
 requirements coupled with the desired functional coverage implied by
 them and the designs. The `top` must be unique among all instances!
+Specification to each design is stored in `[top].md`. In addition, each
+design contains port and code related to the statement coverage capture
+with comments that ensure they are excluded in the computed statement
+coverage.
 
 The format of the dataset is:
 ```json
