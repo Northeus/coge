@@ -19,7 +19,7 @@ class Design:
 class Requirement:
     description: str
     coverpoints: list[Coverpoint | Cross]
-    target: Literal['bin', 'sequence', 'cross']
+    target: Literal["bin", "sequence", "cross"]
 
 
 @dataclass(frozen=True)
@@ -64,11 +64,14 @@ class _Design:
 
 def load(dataset_file: Path) -> list[Design]:
     data = json.loads(dataset_file.read_text())
-    config=dacite.Config(cast=[tuple])
+    config = dacite.Config(cast=[tuple])
     designs = [dacite.from_dict(_Design, entity, config) for entity in data]
     folder = dataset_file.resolve().parent
-    return [Design(top=design.top,
-                   code=folder / f'{design.top}.sv',
-                   requirements=design.requirements)
-            for design in designs
+    return [
+        Design(
+            top=design.top,
+            code=folder / f"{design.top}.sv",
+            requirements=design.requirements,
+        )
+        for design in designs
     ]

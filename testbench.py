@@ -52,38 +52,38 @@ class _Params:
     reset_probability: float = 0.1
 
     def to_env(self) -> dict[str, str]:
-        seed = {'TB_SEED': str(self.seed)} if self.seed is not None else {}
+        seed = {"TB_SEED": str(self.seed)} if self.seed is not None else {}
         return {
-                'TB_DUV': str(self.duv),
-                'TB_RES': str(self.result),
-                'TB_COV': str(self.coverage),
-                'TB_TOP': self.top_level,
-                'TB_CLOCK_LIM': str(self.clock_limit),
-                'TB_COV_STEP': str(self.coverage_step),
-                'TB_RST_PROB': str(self.reset_probability),
+            "TB_DUV": str(self.duv),
+            "TB_RES": str(self.result),
+            "TB_COV": str(self.coverage),
+            "TB_TOP": self.top_level,
+            "TB_CLOCK_LIM": str(self.clock_limit),
+            "TB_COV_STEP": str(self.coverage_step),
+            "TB_RST_PROB": str(self.reset_probability),
         } | seed
 
     @classmethod
     def from_env(cls) -> _Params:
-        seed = int(os.environ['TB_SEED']) if 'TB_SEED' in os.environ else None
+        seed = int(os.environ["TB_SEED"]) if "TB_SEED" in os.environ else None
         return _Params(
-                duv=Path(os.environ['TB_DUV']),
-                result=Path(os.environ['TB_RES']),
-                coverage=Path(os.environ['TB_COV']),
-                top_level=os.environ['TB_TOP'],
-                seed=seed,
-                clock_limit=int(os.environ['TB_CLOCK_LIM']),
-                coverage_step=int(os.environ['TB_COV_STEP']),
-                reset_probability=float(os.environ['TB_RST_PROB'])
+            duv=Path(os.environ["TB_DUV"]),
+            result=Path(os.environ["TB_RES"]),
+            coverage=Path(os.environ["TB_COV"]),
+            top_level=os.environ["TB_TOP"],
+            seed=seed,
+            clock_limit=int(os.environ["TB_CLOCK_LIM"]),
+            coverage_step=int(os.environ["TB_COV_STEP"]),
+            reset_probability=float(os.environ["TB_RST_PROB"]),
         )
 
 
 @dataclass(frozen=True)
 class Ports:
     sizes: list[tuple[str, int]]
-    clock_port: str | Literal['not found']
-    reset_port: str | Literal['not found']
-    reset_n_port: str | Literal['not found']
+    clock_port: str | Literal["not found"]
+    reset_port: str | Literal["not found"]
+    reset_n_port: str | Literal["not found"]
     stimulated_ports: list[str]
 
 
@@ -98,7 +98,7 @@ class CoverageInfo:
 class Result:
     ports: Ports
     coverage: list[CoverageInfo] | CoverageError
-    status: list[CoverageError | Literal['ok']]
+    status: list[CoverageError | Literal["ok"]]
 
     def save(self, data_file: Path) -> None:
         def deque_default(obj: object) -> object:
@@ -106,8 +106,9 @@ class Result:
                 return list(obj)
             raise TypeError
 
-        data_file.write_text(json.dumps(dataclasses.asdict(self),
-                                        default=deque_default))
+        data_file.write_text(
+            json.dumps(dataclasses.asdict(self), default=deque_default)
+        )
 
     @classmethod
     def load(cls, data_file: Path) -> Result:
@@ -116,37 +117,41 @@ class Result:
         return dacite.from_dict(Result, data, config)
 
 
-CLOCK_NAMES = ('clk', 'clock')
-RESET_NAMES = ('rst', 'reset')
-RESET_N_NAMES = ('rstn', 'rst_n', 'rst_neg', 'resetn', 'reset_n', 'reset_neg')
-COVERAGE_NAMES = ('COVERAGE_CAPTURE',)
+CLOCK_NAMES = ("clk", "clock")
+RESET_NAMES = ("rst", "reset")
+RESET_N_NAMES = ("rstn", "rst_n", "rst_neg", "resetn", "reset_n", "reset_neg")
+COVERAGE_NAMES = ("COVERAGE_CAPTURE",)
 
 
 @dataclass(frozen=True)
 class _Port:
     name: str
     width: int
-    direction: Literal['input', 'output', 'inout']
+    direction: Literal["input", "output", "inout"]
     handle: ModifiableObject
 
 
 def _find_ports(dut: HierarchyObject, code: Path) -> list[_Port]:
-    names = filter(lambda x: not x.startswith('_'), dir(dut))
-    objects =  filter(lambda x: isinstance(x, ModifiableObject),
-                      map(partial(getattr, dut), names))
+    names = filter(lambda x: not x.startswith("_"), dir(dut))
+    objects = filter(
+        lambda x: isinstance(x, ModifiableObject), map(partial(getattr, dut), names)
+    )
 
     pattern = re.compile(
-        r'\b(input|output|inout)\b'
-        r'\s+(?:logic|wire|reg)?'
-        r'(?:\s*\[\s*[^\]]*\s*\])?'
-        r'\s+(\w+)',
-        re.IGNORECASE)
+        r"\b(input|output|inout)\b"
+        r"\s+(?:logic|wire|reg)?"
+        r"(?:\s*\[\s*[^\]]*\s*\])?"
+        r"\s+(\w+)",
+        re.IGNORECASE,
+    )
     matches = pattern.findall(code.read_text())
     directions = {port: direction for direction, port in matches}
 
-    return [_Port(x._name, int(x.__len__()), directions[x._name], x)
-            for x in objects
-            if x._name in directions]
+    return [
+        _Port(x._name, int(x.__len__()), directions[x._name], x)
+        for x in objects
+        if x._name in directions
+    ]
 
 
 def _find_port(ports: list[_Port], names: tuple[str, ...]) -> _Port | None:
@@ -159,33 +164,32 @@ def _set_value(port: _Port | None, value: int) -> None:
         port.handle.value = value
 
 
-CoverageError = Literal['code error', 'unknown port', 'too large', 'timeout']
-CoverageStatus = CoverageError | Literal['ok']
+CoverageError = Literal["code error", "unknown port", "too large", "timeout"]
+CoverageStatus = CoverageError | Literal["ok"]
 
 
 def _timeout_handler(_arg1, _arg2) -> None:
-    raise TimeoutError('Execution timed out!')
+    raise TimeoutError("Execution timed out!")
 
 
-def _custom_import(name: str,
-                  globals: dict | None = None,
-                  locals: dict | None = None,
-                  fromlist: tuple[str, ...] = (),
-                  level: int = 0
-                  ) -> ModuleType:
-    assert name == 'coverage'
+def _custom_import(
+    name: str,
+    globals: dict | None = None,
+    locals: dict | None = None,
+    fromlist: tuple[str, ...] = (),
+    level: int = 0,
+) -> ModuleType:
+    assert name == "coverage"
     return __import__(name, globals, locals, fromlist, level)
 
 
-def _load_coverage(code_file: Path,
-                   port_widths: dict[str, int]
-                   ) -> tuple[Coverage, list[CoverageError | Literal['ok']]]:
+def _load_coverage(
+    code_file: Path, port_widths: dict[str, int]
+) -> tuple[Coverage, list[CoverageError | Literal["ok"]]]:
     snippets = json.loads(code_file.read_text())
 
     coverage.register_port_width(lambda x: port_widths[x])
-    globals = {
-        '__builtins__': {**builtins.__dict__, '__import__': _custom_import}
-    }
+    globals = {"__builtins__": {**builtins.__dict__, "__import__": _custom_import}}
     locals = {}
 
     coverpoints = []
@@ -199,101 +203,106 @@ def _load_coverage(code_file: Path,
             exec(code, globals, locals)
             signal.alarm(0)
         except TimeoutError:
-            errors.append('timeout')
+            errors.append("timeout")
             continue
         except CoverageSizeError:
-            errors.append('too large')
+            errors.append("too large")
             continue
         except Exception:
-            errors.append('code error')
+            errors.append("code error")
             continue
         finally:
             signal.alarm(0)
 
-        new_coverpoints = [x for x in locals.values()
-                           if isinstance(x, Coverpoint)]
+        new_coverpoints = [x for x in locals.values() if isinstance(x, Coverpoint)]
         new_crosses = [x for x in locals.values() if isinstance(x, Cross)]
         locals = {}
 
         names = (x.port for x in new_coverpoints)
-        names = chain(names,
-                      (x.port for c in new_crosses for b in c.cross for x in b))
+        names = chain(names, (x.port for c in new_crosses for b in c.cross for x in b))
         names = list(names)
 
         if any(name not in port_widths.keys() for name in names):
-            errors.append('unknown port')
+            errors.append("unknown port")
             continue
 
         coverpoints += new_coverpoints
         crosses += new_crosses
 
-        errors.append('ok')
+        errors.append("ok")
 
     return Coverage(coverpoints, crosses), errors
 
 
 def run(params: Params) -> Result:
     rood_dir = Path(__file__).parent.resolve()
-    tmp_dir = rood_dir / 'tmp'
+    tmp_dir = rood_dir / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    date = datetime.now().now().strftime('%Y-%m-%d_%H-%S-%f')
-    test_dir = tmp_dir / f'test_{params.top_level}_{date}'
+    date = datetime.now().now().strftime("%Y-%m-%d_%H-%S-%f")
+    test_dir = tmp_dir / f"test_{params.top_level}_{date}"
     test_dir.mkdir(parents=True, exist_ok=False)
-    build_dir = test_dir / 'build'
+    build_dir = test_dir / "build"
 
-    for var in ('PYTHONPATH', 'LD_LIBRARY_PATH'):
-        os.environ[var] = f'{rood_dir}:{os.environ.get(var), ''}'
+    for var in ("PYTHONPATH", "LD_LIBRARY_PATH"):
+        os.environ[var] = f"{rood_dir}:{os.environ.get(var), ''}"
 
-    runner = get_runner('verilator')
-    runner.build(sources=[params.duv],
-                 hdl_toplevel=params.top_level,
-                 build_dir=build_dir,
-                 always=True,
-                 clean=True,
-                 build_args=['--coverage',
-                             '-LDFLAGS',
-                             f'-L{rood_dir} -ldpi'])
+    runner = get_runner("verilator")
+    runner.build(
+        sources=[params.duv],
+        hdl_toplevel=params.top_level,
+        build_dir=build_dir,
+        always=True,
+        clean=True,
+        build_args=["--coverage", "-LDFLAGS", f"-L{rood_dir} -ldpi"],
+    )
 
-    coverage_file = test_dir / 'coverage.json'
+    coverage_file = test_dir / "coverage.json"
     coverage_file.write_text(json.dumps(params.coverage_snippets))
-    result_file = test_dir / 'result.json'
+    result_file = test_dir / "result.json"
 
-
-    _params = _Params(duv=params.duv,
-                      result=result_file,
-                      coverage=coverage_file,
-                      top_level=params.top_level,
-                      seed=params.seed,
-                      clock_limit=params.clock_limit,
-                      coverage_step=params.coverage_step)
-    runner.test(hdl_toplevel=params.top_level,
-                test_module='testbench',
-                build_dir=build_dir,
-                test_dir=test_dir,
-                extra_env=_params.to_env())
+    _params = _Params(
+        duv=params.duv,
+        result=result_file,
+        coverage=coverage_file,
+        top_level=params.top_level,
+        seed=params.seed,
+        clock_limit=params.clock_limit,
+        coverage_step=params.coverage_step,
+    )
+    runner.test(
+        hdl_toplevel=params.top_level,
+        test_module="testbench",
+        build_dir=build_dir,
+        test_dir=test_dir,
+        extra_env=_params.to_env(),
+    )
 
     return Result.load(result_file)
 
 
 def process_line(line: str) -> int | None:
-    if line[0:1] not in ' %~+-' or '// ignore coverage' in line:
+    if line[0:1] not in " %~+-" or "// ignore coverage" in line:
         return None
     line = line[1:]
-    hits, _, _ = line.partition(' ')
+    hits, _, _ = line.partition(" ")
     return int(hits) if hits.isdecimal() else None
 
 
 def _statement_coverage(dir: Path) -> float:
-    coverage_cmd = ['verilator_coverage', str(dir / 'coverage.dat'),
-                    '--annotate', str(dir / 'logs'),
-                    '--annotate-min', '1', '--annotate-all']
-    subprocess.run(coverage_cmd,
-                   check=True,
-                   stdout=subprocess.DEVNULL,
-                   stderr=subprocess.DEVNULL)
+    coverage_cmd = [
+        "verilator_coverage",
+        str(dir / "coverage.dat"),
+        "--annotate",
+        str(dir / "logs"),
+        "--annotate-min",
+        "1",
+        "--annotate-all",
+    ]
+    subprocess.run(
+        coverage_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
 
-    coverage_log = next(x for x in (dir / 'logs').iterdir()
-                        if x.is_file())
+    coverage_log = next(x for x in (dir / "logs").iterdir() if x.is_file())
     code_coverage_log = coverage_log.read_text()
 
     coverage_raw = [process_line(x) for x in code_coverage_log.splitlines()]
@@ -304,7 +313,7 @@ def _statement_coverage(dir: Path) -> float:
 async def _generate_clock(clock: _Port) -> None:
     for value in cycle((0, 1)):
         clock.handle.value = value
-        await Timer(Decimal(1), units='ns')
+        await Timer(Decimal(1), units="ns")
 
 
 @cocotb.test
@@ -325,21 +334,22 @@ async def test_module(dut: HierarchyObject) -> None:
     assert coverage_trigger is not None
 
     ignored = {x and x.name for x in (clock, reset, reset_n, coverage_trigger)}
-    input_ports = [x for x in ports
-                   if x.direction == 'input' and x.name not in ignored]
+    input_ports = [x for x in ports if x.direction == "input" and x.name not in ignored]
 
-    ports_info = Ports(sizes=[(x.name, x.width) for x in ports],
-                       clock_port=clock.name,
-                       reset_port=reset.name if reset else 'not found',
-                       reset_n_port=reset_n.name if reset_n else 'not found',
-                       stimulated_ports=[x.name for x in input_ports])
+    ports_info = Ports(
+        sizes=[(x.name, x.width) for x in ports],
+        clock_port=clock.name,
+        reset_port=reset.name if reset else "not found",
+        reset_n_port=reset_n.name if reset_n else "not found",
+        stimulated_ports=[x.name for x in input_ports],
+    )
 
-    _coverage, _status = _load_coverage(params.coverage,
-                                        {x.name: x.width for x in ports})
+    _coverage, _status = _load_coverage(
+        params.coverage, {x.name: x.width for x in ports}
+    )
     coverages = []
 
-    reset_gen = map(lambda x: random.random() < x,
-                            cycle((params.reset_probability,)))
+    reset_gen = map(lambda x: random.random() < x, cycle((params.reset_probability,)))
     reset_gen = chain((False, True, False), reset_gen)
 
     for i in alive_it(range(1, params.clock_limit + 1)):
@@ -355,16 +365,17 @@ async def test_module(dut: HierarchyObject) -> None:
         await RisingEdge(clock.handle)
 
         values = {port.name: int(port.handle.value) for port in ports}
-        if ((reset is None or reset.handle.value == 0)
-                and (reset_n is None or reset_n.handle.value == 1)):
+        if (reset is None or reset.handle.value == 0) and (
+            reset_n is None or reset_n.handle.value == 1
+        ):
             _coverage.sample_all(values)
 
         if store_coverage:
             statement = _statement_coverage(params.coverage.parent)
             functional = _coverage.percentage()
-            coverages.append(CoverageInfo(i,
-                                          statement=statement,
-                                          functional=functional))
+            coverages.append(
+                CoverageInfo(i, statement=statement, functional=functional)
+            )
 
     result = Result(ports_info, coverages, _status)
     result.save(params.result)

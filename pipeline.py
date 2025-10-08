@@ -4,7 +4,6 @@ import json
 from argparse import ArgumentParser
 from collections import deque
 from dataclasses import asdict, dataclass
-from itertools import cycle
 from pathlib import Path
 
 import dacite
@@ -28,8 +27,7 @@ class Result:
                 return list(obj)
             raise TypeError
 
-        data_file.write_text(json.dumps(list(map(asdict, data)),
-                                        default=deque_default))
+        data_file.write_text(json.dumps(list(map(asdict, data)), default=deque_default))
 
     @staticmethod
     def load_data(data_file: Path) -> list[Result]:
@@ -40,20 +38,20 @@ class Result:
 
 def main() -> None:
     parser = ArgumentParser()
-    parser.add_argument('model', type=str)
-    parser.add_argument('-o', '--output', type=Path, default='results.json')
+    parser.add_argument("model", type=str)
+    parser.add_argument("-o", "--output", type=Path, default="results.json")
     args = parser.parse_args()
 
-    data_file = Path(__file__).parent.resolve() / 'dataset' / 'data.json'
+    data_file = Path(__file__).parent.resolve() / "dataset" / "data.json"
     data = dataset.load(data_file)
     for design in data:
-        print(f'Design: {design.top} ({len(design.requirements)} req.)')
+        print(f"Design: {design.top} ({len(design.requirements)} req.)")
     print()
 
     generated_per_design = []
     attempts = 5
     total = sum(len(x.requirements) for x in data) * attempts
-    with alive_bar(total, title='Generating requirements') as bar:
+    with alive_bar(total, title="Generating requirements") as bar:
         for design in data:
             for _ in range(attempts):
                 generated = []
@@ -66,19 +64,23 @@ def main() -> None:
     results = []
     data_dir = Path(__file__).parent.resolve()
     for design, coverage in generated_per_design:
-        snippets = [(x.code[-1][1] if x.code[-1][0] == 'ok' else 'invalid=code')
-                    for x in coverage]
-        rslt = testbench.run(testbench.Params(duv=data_dir / design.code,
-                                              top_level=design.top,
-                                              coverage_snippets=snippets,
-                                              seed=seed,
-                                              clock_limit=10000,
-                                              coverage_step=100))
-        results.append(Result(top=design.top,
-                              coverage=coverage,
-                              simulation=rslt))
+        snippets = [
+            (x.code[-1][1] if x.code[-1][0] == "ok" else "invalid=code")
+            for x in coverage
+        ]
+        rslt = testbench.run(
+            testbench.Params(
+                duv=data_dir / design.code,
+                top_level=design.top,
+                coverage_snippets=snippets,
+                seed=seed,
+                clock_limit=10000,
+                coverage_step=100,
+            )
+        )
+        results.append(Result(top=design.top, coverage=coverage, simulation=rslt))
     Result.save_data(args.output, results)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

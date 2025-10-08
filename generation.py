@@ -126,12 +126,12 @@ seq = sequence(data, [0, 1, 3, 2])
 ```"""
 
 
-GenerationStatus = Literal['ok', 'no code', 'invalid code']
+GenerationStatus = Literal["ok", "no code", "invalid code"]
 
 
 @dataclass(frozen=True)
 class Message:
-    role: Literal['system', 'assistant', 'user']
+    role: Literal["system", "assistant", "user"]
     content: str
 
 
@@ -142,64 +142,58 @@ class GeneratedCoverage:
 
 
 def _extract_code_snippets(message: str) -> list[str]:
-    pattern = r'```(?:\w+\n)(.*?)```'
+    pattern = r"```(?:\w+\n)(.*?)```"
     snippets = re.findall(pattern, message, re.DOTALL)
     return snippets
 
 
 def _check_code(code: str) -> None | str:
-    with tempfile.NamedTemporaryFile(mode='w', dir='./', suffix='.py') as tmp:
-        logs = ''
+    with tempfile.NamedTemporaryFile(mode="w", dir="./", suffix=".py") as tmp:
+        logs = ""
         tmp.write(code)
         tmp.flush()
 
         buffer = io.StringIO()
         reporter = text.TextReporter(buffer)
-        lint.Run([tmp.name, '--errors-only'], reporter=reporter, exit=False)
-        if (pylint_log := buffer.getvalue()) != '':
-            logs += f'Pylint logs:\n{pylint_log}'
+        lint.Run([tmp.name, "--errors-only"], reporter=reporter, exit=False)
+        if (pylint_log := buffer.getvalue()) != "":
+            logs += f"Pylint logs:\n{pylint_log}"
 
-        mypy_log_1, mypy_log_2, status = api.run([tmp.name,
-                                                  '--follow-imports=silent'])
+        mypy_log_1, mypy_log_2, status = api.run([tmp.name, "--follow-imports=silent"])
         if status != 0:
-            mypy_log = mypy_log_1 + '\n' + mypy_log_2
-            logs += ('' if logs == '' else '\n') + f'Mypy logs:\n{mypy_log}'
+            mypy_log = mypy_log_1 + "\n" + mypy_log_2
+            logs += ("" if logs == "" else "\n") + f"Mypy logs:\n{mypy_log}"
 
-        return None if logs == '' else logs
+        return None if logs == "" else logs
 
 
 def generate(requirement: str, model: str) -> GeneratedCoverage:
     results: list[tuple[GenerationStatus, str]] = []
-    messages = [
-        Message('system', SYSTEM_PROMPT),
-        Message('user', requirement)
-    ]
+    messages = [Message("system", SYSTEM_PROMPT), Message("user", requirement)]
 
     for _ in range(1 + 3):
         response = chat(model=model, messages=list(map(asdict, messages)))
         message = response.message.content
         assert message is not None
-        messages.append(Message('assistant', message))
+        messages.append(Message("assistant", message))
 
         snippets = _extract_code_snippets(message)
         if len(snippets) == 0:
-            results.append(('no code', ''))
-            messages.append(Message('user',
-                                     'Please provide the code in ```py...```'))
+            results.append(("no code", ""))
+            messages.append(Message("user", "Please provide the code in ```py...```"))
             continue
 
         if len(snippets) > 1:
-            print('Multiple code snippets detected:\n'
-                  f'{'\n\n'.join(snippets)}\n')
+            print(f"Multiple code snippets detected:\n{'\n\n'.join(snippets)}\n")
 
         code = snippets[-1]
         errors = _check_code(code)
         if errors is not None:
-            results.append(('invalid code', code))
-            messages.append(Message('user', errors))
+            results.append(("invalid code", code))
+            messages.append(Message("user", errors))
             continue
 
-        results.append(('ok', code))
+        results.append(("ok", code))
         break
 
     return GeneratedCoverage(messages, results)
