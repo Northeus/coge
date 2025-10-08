@@ -57,7 +57,6 @@ There are following directories:
 |-----------------|--------------------------------------------------|
 | `dataset/`      | Contains DUTs, specifications, and requirements. |
 | `results/`      | Stores all results from the generation pipeline. |
-| `test_results/` | Final results from the evaluation pipeline.      |
 
 
 And following scripts:
@@ -68,7 +67,7 @@ And following scripts:
 | `dataset.py`     | Loader for the dataset.                                  |
 | `generation.py`  | Logic and templates handling the code generation.        |
 | `pipeline.py`    | Script that runs the generation pipieline.               |
-| `summary.py`     | Summarization of the generated and evaluated data.       |
+| `summary.py`     | Summarize generation and simulation + evaluate data.     |
 
 
 ## Dataset
