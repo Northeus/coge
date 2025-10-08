@@ -6,7 +6,7 @@ are supported.
 Project is written with focus on extensibility, therefore to add another
 test data, you should only need to extend the dataset folder and it should
 work out of the box. There might be a possibility that you might need to edit
-the port discovery code logic in `testbench.py` (see globals `*_NAMES').
+the port discovery code logic in `testbench.py` (see globals `*_NAMES`).
 
 **DISCLAIMER:** Project is just a part of a prototype stored within
 a private repository, and will be updated sparingly whenever some
@@ -40,8 +40,8 @@ If you are interested in how the generation works, feel free to explore the
  1. Each requirement is taken and pasted into a chat including a prompt template.
  1. LLM generates some python code based on that requirement and the prompt.
  1. The static analysis is performed and any issues are put back into the chat.
- 1. The process is repeated until the static analysis passes or the maximum
-    number of attempts (in our case 3) is reached.
+ 1. The process is repeated until the static analysis passes or three attempts 
+    are exceed.
  1. When all the code is generated a simulation proceed where a universal
     testbench takes all bathches of functional coverage code and runs a
     simulation using them one by one.
